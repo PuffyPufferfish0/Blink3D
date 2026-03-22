@@ -32,6 +32,12 @@ void Mesh::setupMesh() {
     glBindVertexArray(0);
 }
 
+void Mesh::updateGPUData() {
+    glBindBuffer(GL_ARRAY_BUFFER, VBO);
+    glBufferSubData(GL_ARRAY_BUFFER, 0, vertices.size() * sizeof(Vertex), &vertices[0]);
+}
+
+
 void Mesh::Draw() {
     glBindVertexArray(VAO);
     // Use the stored drawMode here

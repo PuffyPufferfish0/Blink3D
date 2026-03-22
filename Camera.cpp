@@ -13,7 +13,13 @@ Camera::Camera(glm::vec3 target, float distance) {
     
     updateCameraVectors();
 }
-
+void Camera::Reset() {
+    Target = glm::vec3(0.0f, 0.0f, 0.0f);
+    Distance = 4.0f;
+    Yaw = -90.0f;
+    Pitch = 0.0f;
+    updateCameraVectors();
+}
 glm::mat4 Camera::GetViewMatrix() {
     return glm::lookAt(Position, Target, Up);
 }

@@ -4,19 +4,22 @@
 #include <glm/gtc/matrix_transform.hpp>
 #include <cmath>
 
-class Camera {
+class Camera
+{
 public:
+    void Reset();
+
     glm::vec3 Position;
     glm::vec3 Target; // The point in 3D space we are looking at
     glm::vec3 Front;
     glm::vec3 Up;
     glm::vec3 Right;
     glm::vec3 WorldUp;
-    
+
     float Yaw;
     float Pitch;
     float Distance; // How far back from the target we are
-    
+
     float MouseSensitivity;
     float ZoomSpeed;
     float PanSpeed;
