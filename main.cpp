@@ -13,8 +13,8 @@
 #include "imgui/imgui_impl_sdl2.h"
 #include "imgui/imgui_impl_opengl3.h"
 
-const int WINDOW_WIDTH = 1024;
-const int WINDOW_HEIGHT = 768;
+const int WINDOW_WIDTH = 1920;
+const int WINDOW_HEIGHT = 1080;
 
 const char* vertexShaderSource = "#version 330 core\n"
     "layout (location = 0) in vec3 aPos;\n"
@@ -47,8 +47,7 @@ int main(int argc, char* argv[]) {
     SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
     SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE, 24);
 
-    SDL_Window* window = SDL_CreateWindow("Blink3D", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, WINDOW_WIDTH, WINDOW_HEIGHT, SDL_WINDOW_OPENGL | SDL_WINDOW_SHOWN);
-    if (!window) { return -1; }
+SDL_Window* window = SDL_CreateWindow("Blink3D", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, WINDOW_WIDTH, WINDOW_HEIGHT, SDL_WINDOW_OPENGL | SDL_WINDOW_SHOWN | SDL_WINDOW_RESIZABLE);    if (!window) { return -1; }
 
     SDL_GLContext glContext = SDL_GL_CreateContext(window);
     if (!glContext) { return -1; }
@@ -98,6 +97,27 @@ int main(int argc, char* argv[]) {
         {glm::vec3(-0.5f, -0.5f, -0.5f), glm::vec3(0.0f, 0.0f, 1.0f)}
     };
 
+// --- Generate Grid Data ---
+    std::vector<Vertex> gridVertices;
+    float gridSize = 10.0f; // Total size
+    int divisions = 20;     // Number of squares
+    glm::vec3 gridColor = glm::vec3(0.4f, 0.4f, 0.4f); // Subtle gray
+
+    for (int i = 0; i <= divisions; i++) {
+        float pos = -gridSize + (i * (gridSize * 2.0f / divisions));
+        
+        // Lines along X axis
+        gridVertices.push_back({glm::vec3(pos, 0.0f, -gridSize), gridColor});
+        gridVertices.push_back({glm::vec3(pos, 0.0f, gridSize),  gridColor});
+        
+        // Lines along Z axis
+        gridVertices.push_back({glm::vec3(-gridSize, 0.0f, pos), gridColor});
+        gridVertices.push_back({glm::vec3(gridSize, 0.0f, pos),  gridColor});
+    }
+
+    // Create the grid mesh using GL_LINES
+    Mesh grid(gridVertices, GL_LINES);
+
     Mesh myCube(cubeVertices);
 
     // --- 4. Main Application Loop Setup ---
@@ -112,6 +132,10 @@ int main(int argc, char* argv[]) {
     SDL_Event event;
 
     while (isRunning) {
+
+                static bool showGrid = true; // State for the toggle
+
+
         // Check if Shift is being held (for Panning)
         const Uint8* state = SDL_GetKeyboardState(NULL);
         bool isShift = state[SDL_SCANCODE_LSHIFT] || state[SDL_SCANCODE_RSHIFT];
@@ -191,11 +215,39 @@ int main(int argc, char* argv[]) {
 
             // 3. The Window Menu
             if (ImGui::BeginMenu("Window")) {
-                if (ImGui::MenuItem("Reset Layout")) { /* TODO */ }
-                if (ImGui::MenuItem("Toggle Grid")) { /* TODO */ }
+                ImGui::MenuItem("Show Grid", nullptr, &showGrid); // Adds a checkbox
+                if (ImGui::BeginMenu("Resolution")) {
+                    if (ImGui::MenuItem("800 x 600")) {
+                        SDL_SetWindowSize(window, 800, 600);
+                        SDL_SetWindowPosition(window, SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED);
+                    }
+                    if (ImGui::MenuItem("1024 x 768")) {
+                        SDL_SetWindowSize(window, 1024, 768);
+                        SDL_SetWindowPosition(window, SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED);
+                    }
+                    if (ImGui::MenuItem("1280 x 720")) {
+                        SDL_SetWindowSize(window, 1280, 720);
+                        SDL_SetWindowPosition(window, SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED);
+                    }
+                    if (ImGui::MenuItem("1920 x 1080")) {
+                        SDL_SetWindowSize(window, 1920, 1080);
+                        SDL_SetWindowPosition(window, SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED);
+                    }
+                    ImGui::EndMenu();
+                }
+
+                ImGui::Separator();
+
+                // Toggle Fullscreen Borderless
+                static bool isFullscreen = false;
+                if (ImGui::MenuItem("Toggle Fullscreen", "F11")) {
+                    isFullscreen = !isFullscreen;
+                    // SDL_WINDOW_FULLSCREEN_DESKTOP creates a borderless fullscreen window
+                    SDL_SetWindowFullscreen(window, isFullscreen ? SDL_WINDOW_FULLSCREEN_DESKTOP : 0);
+                }
+
                 ImGui::EndMenu();
             }
-
             ImGui::EndMainMenuBar();
         }
 
@@ -205,7 +257,6 @@ int main(int argc, char* argv[]) {
         ImGui::End();
 
         ImGui::Render();
-        
         // --- Render Frame ---
         int width, height;
         SDL_GetWindowSize(window, &width, &height);
@@ -226,8 +277,18 @@ int main(int argc, char* argv[]) {
         glUniformMatrix4fv(glGetUniformLocation(shaderProgram, "view"), 1, GL_FALSE, glm::value_ptr(view));
         glUniformMatrix4fv(glGetUniformLocation(shaderProgram, "projection"), 1, GL_FALSE, glm::value_ptr(projection));
 
-        // Draw the Cube
-        myCube.Draw();
+
+// Draw the Grid
+    if (showGrid) {
+        // We use the same shader! 
+        // Identity matrix for model because the grid is already at origin
+        glUniformMatrix4fv(glGetUniformLocation(shaderProgram, "model"), 1, GL_FALSE, glm::value_ptr(glm::mat4(1.0f)));
+        grid.Draw();
+    }
+
+    // Draw the Cube (after the grid)
+    glUniformMatrix4fv(glGetUniformLocation(shaderProgram, "model"), 1, GL_FALSE, glm::value_ptr(model));
+    myCube.Draw();
 
         // Draw UI
         ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());

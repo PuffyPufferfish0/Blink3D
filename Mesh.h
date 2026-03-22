@@ -12,19 +12,13 @@ struct Vertex {
 
 class Mesh {
 public:
-    // We use std::vector so the memory is contiguous, just like a raw array
     std::vector<Vertex> vertices;
-    
-    // OpenGL buffer IDs
     unsigned int VAO, VBO;
+    GLenum drawMode; // Added this
 
-    // Constructor
-    Mesh(std::vector<Vertex> vertices);
-
-    // Render the mesh
+    // Update constructor signature
+    Mesh(std::vector<Vertex> vertices, GLenum mode = GL_TRIANGLES); 
     void Draw();
-
 private:
-    // Internal function to bind the data to the GPU
     void setupMesh();
 };

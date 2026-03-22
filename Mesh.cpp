@@ -1,11 +1,11 @@
 #include "Mesh.h"
 
 // Constructor takes the list of vertices and immediately sends them to the GPU
-Mesh::Mesh(std::vector<Vertex> vertices) {
+Mesh::Mesh(std::vector<Vertex> vertices, GLenum mode) {
     this->vertices = vertices;
+    this->drawMode = mode; // Store the mode (GL_TRIANGLES or GL_LINES)
     setupMesh();
 }
-
 void Mesh::setupMesh() {
     // 1. Generate the buffers
     glGenVertexArrays(1, &VAO);
@@ -33,8 +33,8 @@ void Mesh::setupMesh() {
 }
 
 void Mesh::Draw() {
-    // Bind the specific VAO for this mesh and draw its triangles
     glBindVertexArray(VAO);
-    glDrawArrays(GL_TRIANGLES, 0, vertices.size());
+    // Use the stored drawMode here
+    glDrawArrays(drawMode, 0, vertices.size()); 
     glBindVertexArray(0);
 }
