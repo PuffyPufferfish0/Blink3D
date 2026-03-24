@@ -15,11 +15,6 @@ void Point::deselect() {
     updateState();
 }
 
-void Point::toggleSelection() {
-    selected = !selected;
-    updateState();
-}
-
 void Point::updateState() {
     color = selected ? COLOR_SELECTED : COLOR_DEFAULT;
 }
