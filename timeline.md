@@ -7,3 +7,6 @@
 
 - now the cube has tangible points
 <img width="1281" height="754" alt="image" src="https://github.com/user-attachments/assets/a1896a9f-6bf4-4345-94d7-f9a1f8806df8" />
+
+- added parametric views and view cube
+  
