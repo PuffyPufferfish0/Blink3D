@@ -17,5 +17,5 @@ run main after make
 ## SHORTCUTS
 |task|execution|
 |-----|-------|
-|**snap to front face**| **z**|
+|**snap to front parametric**| **z**|
 |**toggle point visability**|**p** |
