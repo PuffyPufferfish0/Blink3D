@@ -12,9 +12,9 @@ const int WINDOW_WIDTH = 1280;
 const int WINDOW_HEIGHT = 720;
 
 App::App() : window(nullptr), glContext(nullptr), shaderProg(0), 
-             camera(nullptr), myMesh(nullptr), grid(nullptr),
-             isRunning(true), leftDown(false), midDown(false), ctrlHeld(false),
-             showGrid(true), pointMode(true), selStart(0), selEnd(0) {}
+            camera(nullptr), myMesh(nullptr), grid(nullptr),
+            isRunning(true), leftDown(false), midDown(false), ctrlHeld(false),
+            showGrid(true), pointMode(true), selStart(0), selEnd(0) {}
 
 App::~App() { cleanup(); }
 
@@ -57,7 +57,7 @@ void App::initShaders() {
         "void main() {\n"
         "   gl_Position = projection * view * model * vec4(aPos, 1.0);\n"
         "   ourColor = aColor;\n"
-        "   gl_PointSize = 20.0;\n" // Force size here
+        "   gl_PointSize = 10.0;\n" // Force size here
         "}";
 
     const char* fSrc = "#version 330 core\n"
@@ -134,7 +134,7 @@ void App::initGeometry() {
 
 void App::processEvents() {
     SDL_Event e;
-    static bool draggingPoints = false; // NEW: Track if we are actively dragging vertices
+    static bool draggingPoints = false; // Track if we are actively dragging vertices
 
     while(SDL_PollEvent(&e)) {
         ImGui_ImplSDL2_ProcessEvent(&e);
@@ -293,7 +293,7 @@ void App::buildUI() {
     }
 
     if (leftDown && glm::distance(selStart, selEnd) > 5.0f) {
-        ImGui::GetForegroundDrawList()->AddRect(ImVec2(selStart.x, selStart.y), ImVec2(selEnd.x, selEnd.y), IM_COL32(255, 255, 0, 255), 0, 0, 1.5f);
+        ImGui::GetForegroundDrawList()->AddRect(ImVec2(selStart.x, selStart.y), ImVec2(selEnd.x, selEnd.y), IM_COL32(255, 255, 0, 255), 0, 0, .9f);
         ImGui::GetForegroundDrawList()->AddRectFilled(ImVec2(selStart.x, selStart.y), ImVec2(selEnd.x, selEnd.y), IM_COL32(255, 255, 0, 40));
     }
 }
