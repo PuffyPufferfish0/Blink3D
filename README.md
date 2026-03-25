@@ -1,14 +1,20 @@
 # Blink3D
 A 3D modeling software designed for triangulation and textures. 
 
-make command:
+for the make command, use common sense, it could change depending on added classes, or you may need to exclude some classes for debugging:
 
 ```
-g++ main.cpp glad.c Mesh.cpp Camera.cpp imgui/*.cpp -I./include -I./imgui -I/usr/include/SDL2 -o main -lSDL2 -ldl
+g++ main.cpp App.cpp glad.c Point.cpp Camera.cpp Mesh.cpp imgui/*.cpp -I./include -I./imgui -I/usr/include/SDL2 -I. -o App -lSDL2 -ldl
+
 ```
 
 run main after make
 
 ```
-./main
+./App
 ```
+
+## SHORTCUTS
+|task|execution|
+|-----|-------|
+|**snap to front face**| 'z'|
