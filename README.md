@@ -8,7 +8,7 @@ g++ main.cpp App.cpp glad.c Point.cpp Camera.cpp Mesh.cpp imgui/*.cpp -I./includ
 
 ```
 
-run main after make
+run after make
 
 ```
 ./App
