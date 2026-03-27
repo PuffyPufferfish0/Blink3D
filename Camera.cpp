@@ -20,6 +20,16 @@ void Camera::Reset() {
     Pitch = 0.0f;
     updateCameraVectors();
 }
+
+void Camera::SetRotation(float yaw, float pitch) {
+    Yaw = yaw;
+    Pitch = pitch;
+    // Constrain pitch to avoid flipping
+    if (Pitch > 89.0f)  Pitch = 89.0f;
+    if (Pitch < -89.0f) Pitch = -89.0f;
+    updateCameraVectors();
+}
+
 glm::mat4 Camera::GetViewMatrix() {
     return glm::lookAt(Position, Target, Up);
 }

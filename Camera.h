@@ -8,6 +8,7 @@ class Camera
 {
 public:
     void Reset();
+    void SetRotation(float yaw, float pitch);
 
     glm::vec3 Position;
     glm::vec3 Target; // The point in 3D space we are looking at

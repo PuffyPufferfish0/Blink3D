@@ -1,6 +1,5 @@
 #include "App.h"
 #include <iostream>
-#include <string>
 #include <algorithm>
 #include <glm/gtc/type_ptr.hpp>
 #include <glm/gtc/matrix_transform.hpp>
@@ -12,9 +11,11 @@ const int WINDOW_WIDTH = 1280;
 const int WINDOW_HEIGHT = 720;
 
 App::App() : window(nullptr), glContext(nullptr), shaderProg(0), 
-            camera(nullptr), myMesh(nullptr), grid(nullptr),
-            isRunning(true), leftDown(false), midDown(false), ctrlHeld(false),
-            showGrid(true), pointMode(true), selStart(0), selEnd(0) {}
+             camera(nullptr), viewCube(nullptr), myMesh(nullptr), grid(nullptr),
+             isRunning(true), leftDown(false), midDown(false), ctrlHeld(false), 
+             zHeld(false), draggingPoints(false), isAnimatingCamera(false),
+             showGrid(true), pointMode(true), selStart(0), selEnd(0),
+             targetYaw(-90.0f), targetPitch(0.0f) {}
 
 App::~App() { cleanup(); }
 
@@ -43,7 +44,11 @@ bool App::init() {
     initGeometry();
     
     camera = new Camera(glm::vec3(0,0,0), 5.0f);
+    viewCube = new ViewCube();
+    viewCube->init();
+
     glEnable(GL_DEPTH_TEST);
+    glEnable(GL_PROGRAM_POINT_SIZE);
 
     return true;
 }
@@ -57,7 +62,7 @@ void App::initShaders() {
         "void main() {\n"
         "   gl_Position = projection * view * model * vec4(aPos, 1.0);\n"
         "   ourColor = aColor;\n"
-        "   gl_PointSize = 10.0;\n" // Force size here
+        "   gl_PointSize = 20.0;\n" 
         "}";
 
     const char* fSrc = "#version 330 core\n"
@@ -68,7 +73,6 @@ void App::initShaders() {
         "void main() {\n"
         "   if(isPoint) {\n"
         "       vec3 c = ourColor;\n"
-        "       // FAILSAFE: If the color is close to black (default), render as bright Cyan\n"
         "       if (length(c) < 0.1) c = vec3(0.0, 1.0, 1.0);\n"
         "       FragColor = vec4(c, 1.0);\n"
         "       return;\n"
@@ -77,39 +81,24 @@ void App::initShaders() {
         "   else FragColor = vec4(ourColor, 1.0);\n"
         "}";
 
-    GLuint vs = glCreateShader(GL_VERTEX_SHADER);
-    glShaderSource(vs, 1, &vSrc, NULL);
-    glCompileShader(vs);
-    GLint ok = 0; glGetShaderiv(vs, GL_COMPILE_STATUS, &ok);
-    if(!ok){ GLint len=0; glGetShaderiv(vs, GL_INFO_LOG_LENGTH, &len); std::string log(len>0?len:1,'\0'); glGetShaderInfoLog(vs,len,NULL,&log[0]); std::cerr << "VS error:\n"<<log<<std::endl; }
-
-    GLuint fs = glCreateShader(GL_FRAGMENT_SHADER);
-    glShaderSource(fs, 1, &fSrc, NULL);
-    glCompileShader(fs);
-    ok = 0; glGetShaderiv(fs, GL_COMPILE_STATUS, &ok);
-    if(!ok){ GLint len=0; glGetShaderiv(fs, GL_INFO_LOG_LENGTH, &len); std::string log(len>0?len:1,'\0'); glGetShaderInfoLog(fs,len,NULL,&log[0]); std::cerr << "FS error:\n"<<log<<std::endl; }
-
-    shaderProg = glCreateProgram();
-    glAttachShader(shaderProg, vs); glAttachShader(shaderProg, fs);
-    glLinkProgram(shaderProg);
-    GLint link_ok = 0; glGetProgramiv(shaderProg, GL_LINK_STATUS, &link_ok);
-    if(!link_ok){ GLint len=0; glGetProgramiv(shaderProg, GL_INFO_LOG_LENGTH, &len); std::string log(len>0?len:1,'\0'); glGetProgramInfoLog(shaderProg,len,NULL,&log[0]); std::cerr<<"Link error:\n"<<log<<std::endl; }
-
+    GLuint vs = glCreateShader(GL_VERTEX_SHADER); glShaderSource(vs, 1, &vSrc, NULL); glCompileShader(vs);
+    GLuint fs = glCreateShader(GL_FRAGMENT_SHADER); glShaderSource(fs, 1, &fSrc, NULL); glCompileShader(fs);
+    shaderProg = glCreateProgram(); glAttachShader(shaderProg, vs); glAttachShader(shaderProg, fs); glLinkProgram(shaderProg);
     glDeleteShader(vs); glDeleteShader(fs);
 }
 
 void App::initGeometry() {
     modelPoints.clear();
     // Front face
-    modelPoints.push_back(Point(glm::vec3(-0.5, -0.5,  0.5))); // 0: Bottom-Left
-    modelPoints.push_back(Point(glm::vec3( 0.5, -0.5,  0.5))); // 1: Bottom-Right
-    modelPoints.push_back(Point(glm::vec3( 0.5,  0.5,  0.5))); // 2: Top-Right
-    modelPoints.push_back(Point(glm::vec3(-0.5,  0.5,  0.5))); // 3: Top-Left
+    modelPoints.push_back(Point(glm::vec3(-0.5, -0.5,  0.5))); // 0
+    modelPoints.push_back(Point(glm::vec3( 0.5, -0.5,  0.5))); // 1
+    modelPoints.push_back(Point(glm::vec3( 0.5,  0.5,  0.5))); // 2
+    modelPoints.push_back(Point(glm::vec3(-0.5,  0.5,  0.5))); // 3
     // Back face
-    modelPoints.push_back(Point(glm::vec3(-0.5, -0.5, -0.5))); // 4: Bottom-Left
-    modelPoints.push_back(Point(glm::vec3( 0.5, -0.5, -0.5))); // 5: Bottom-Right
-    modelPoints.push_back(Point(glm::vec3( 0.5,  0.5, -0.5))); // 6: Top-Right
-    modelPoints.push_back(Point(glm::vec3(-0.5,  0.5, -0.5))); // 7: Top-Left
+    modelPoints.push_back(Point(glm::vec3(-0.5, -0.5, -0.5))); // 4
+    modelPoints.push_back(Point(glm::vec3( 0.5, -0.5, -0.5))); // 5
+    modelPoints.push_back(Point(glm::vec3( 0.5,  0.5, -0.5))); // 6
+    modelPoints.push_back(Point(glm::vec3(-0.5,  0.5, -0.5))); // 7
 
     std::vector<unsigned int> indices = {
         0,1,2, 2,3,0, // Front
@@ -134,8 +123,6 @@ void App::initGeometry() {
 
 void App::processEvents() {
     SDL_Event e;
-    static bool draggingPoints = false; // Track if we are actively dragging vertices
-
     while(SDL_PollEvent(&e)) {
         ImGui_ImplSDL2_ProcessEvent(&e);
         if(e.type == SDL_QUIT) isRunning = false;
@@ -152,11 +139,12 @@ void App::processEvents() {
                     midDown = true; SDL_SetRelativeMouseMode(SDL_TRUE); 
                 }
                 if(e.button.button == SDL_BUTTON_LEFT) { 
+                    int w, h; SDL_GetWindowSize(window, &w, &h);
+                    if (viewCube->handleMousePress(e.button.x, e.button.y, w)) continue; // Handled by ViewCube
+
                     selStart = glm::vec2(e.button.x, e.button.y); 
                     selEnd = selStart; 
 
-                    // 1. Raycast / Proximity check FIRST to see if we grabbed a point
-                    int w, h; SDL_GetWindowSize(window, &w, &h);
                     if (h == 0) h = 1;
                     glm::mat4 v = camera->GetViewMatrix(), p_mat = glm::perspective(glm::radians(45.0f), (float)w/h, 0.1f, 100.0f);
                     
@@ -171,17 +159,15 @@ void App::processEvents() {
                     }
 
                     if(best != -1) {
-                        // We clicked exactly on a point handle
                         if (!modelPoints[best].selected) {
-                            if (!ctrl) for(auto& p : modelPoints) p.deselect(); // Clear others
+                            if (!ctrl) for(auto& p : modelPoints) p.deselect();
                             modelPoints[best].select();
                             draggingPoints = true;
                         } else {
-                            if (ctrl) modelPoints[best].deselect(); // Toggle off
-                            else draggingPoints = true; // Grab already selected points
+                            if (ctrl) modelPoints[best].deselect();
+                            else draggingPoints = true;
                         }
                     } else {
-                        // Clicked empty space -> start Box Selection
                         leftDown = true; 
                         if(!ctrl) for(auto& p : modelPoints) p.deselect();
                     }
@@ -193,12 +179,12 @@ void App::processEvents() {
                     midDown = false; SDL_SetRelativeMouseMode(SDL_FALSE); 
                 }
                 if(e.button.button == SDL_BUTTON_LEFT) {
-                    if (draggingPoints) {
-                        draggingPoints = false; // Drop the points
-                    }
+                    if (viewCube->handleMouseRelease()) continue; // Handled by ViewCube
+
+                    if (draggingPoints) draggingPoints = false;
+                    
                     if (leftDown) {
-                        leftDown = false; // Stop box selection
-                        
+                        leftDown = false;
                         if(glm::distance(selStart, selEnd) > 5.0f) {
                             int w, h; SDL_GetWindowSize(window, &w, &h);
                             if (h == 0) h = 1;
@@ -220,25 +206,29 @@ void App::processEvents() {
             }
             
             if(e.type == SDL_MOUSEMOTION) {
+                if (viewCube->handleMouseMotion(e.motion.xrel, e.motion.yrel, camera)) {
+                    isAnimatingCamera = false; // Cancel animation if viewcube is grabbed
+                    targetYaw = camera->Yaw;
+                    targetPitch = camera->Pitch;
+                    continue;
+                }
+
                 if(midDown) {
+                    isAnimatingCamera = false; // Cancel animation on manual orbit
                     if(isShift) camera->ProcessMousePan(e.motion.xrel, -e.motion.yrel);
                     else camera->ProcessMouseOrbit(e.motion.xrel, -e.motion.yrel);
+                    
+                    targetYaw = camera->Yaw;
+                    targetPitch = camera->Pitch;
                 }
-                if(leftDown) {
-                    selEnd = glm::vec2(e.motion.x, e.motion.y);
-                }
+                if(leftDown) selEnd = glm::vec2(e.motion.x, e.motion.y);
+                
                 if(draggingPoints) {
-                    // Math to translate 2D mouse motion into 1:1 3D space tracking
                     int w, h; SDL_GetWindowSize(window, &w, &h);
                     if (h == 0) h = 1;
-                    
-                    // 0.8284 is approx 2 * tan(45 degrees / 2) based on our FOV
                     float unitsPerPixel = (camera->Distance * 0.8284f) / (float)h;
-                    
-                    // Calculate movement relative to the camera's orientation vectors
                     glm::vec3 moveDelta = camera->Right * ((float)e.motion.xrel * unitsPerPixel) 
                                         - camera->Up    * ((float)e.motion.yrel * unitsPerPixel);
-                    
                     for(auto& p : modelPoints) {
                         if(p.selected) p.position += moveDelta;
                     }
@@ -248,12 +238,39 @@ void App::processEvents() {
         
         if(e.type == SDL_KEYDOWN) {
             if(e.key.keysym.sym == SDLK_p) pointMode = !pointMode;
-            if(e.key.keysym.sym == SDLK_z) camera->Reset();
             if(e.key.keysym.sym == SDLK_s) {
                 glm::vec3 avg(0); int c = 0;
                 for(auto& pt : modelPoints) if(pt.selected) { avg += pt.position; c++; }
                 if(c > 1) { avg /= (float)c; for(auto& pt : modelPoints) if(pt.selected) pt.position = avg; }
             }
+            
+            // --- Smoothed Parametric Snapping Logic ---
+            if(e.key.keysym.sym == SDLK_z && e.key.repeat == 0) {
+                zHeld = true;
+                // Snap to the *nearest* 90 degree increment for a smooth transition
+                targetYaw = std::round(camera->Yaw / 90.0f) * 90.0f;
+                if (camera->Pitch > 45.0f) targetPitch = 89.0f;
+                else if (camera->Pitch < -45.0f) targetPitch = -89.0f;
+                else targetPitch = 0.0f;
+                
+                isAnimatingCamera = true;
+            }
+            
+            if(zHeld && e.key.repeat == 0) {
+                // Cycle relative to the current target, allowing infinite rotation!
+                if(e.key.keysym.sym == SDLK_UP) { targetPitch += 89.0f; isAnimatingCamera = true; }
+                if(e.key.keysym.sym == SDLK_DOWN) { targetPitch -= 89.0f; isAnimatingCamera = true; }
+                if(e.key.keysym.sym == SDLK_LEFT) { targetYaw -= 90.0f; isAnimatingCamera = true; }
+                if(e.key.keysym.sym == SDLK_RIGHT) { targetYaw += 90.0f; isAnimatingCamera = true; }
+                
+                // Clamp pitch to avoid turning completely upside down
+                if (targetPitch > 89.0f) targetPitch = 89.0f;
+                if (targetPitch < -89.0f) targetPitch = -89.0f;
+            }
+        }
+        
+        if(e.type == SDL_KEYUP) {
+            if(e.key.keysym.sym == SDLK_z) zHeld = false;
         }
     }
 }
@@ -261,16 +278,34 @@ void App::processEvents() {
 void App::run() {
     while(isRunning) {
         processEvents();
+        
+        // Start ImGui Frame
         ImGui_ImplOpenGL3_NewFrame();
         ImGui_ImplSDL2_NewFrame();
         ImGui::NewFrame();
+        
         update();
         buildUI();
-        render();
+        render(); // Rendering pipeline applies ImGui at the very end
     }
 }
 
 void App::update() {
+    // --- Camera Animation Lerp ---
+    if (isAnimatingCamera) {
+        float lerpSpeed = 0.15f; // Tweak this decimal for faster/slower snaps
+        float newYaw = camera->Yaw + (targetYaw - camera->Yaw) * lerpSpeed;
+        float newPitch = camera->Pitch + (targetPitch - camera->Pitch) * lerpSpeed;
+        
+        camera->SetRotation(newYaw, newPitch);
+
+        // Snap perfectly and stop calculating if we are close enough
+        if (std::abs(targetYaw - camera->Yaw) < 0.1f && std::abs(targetPitch - camera->Pitch) < 0.1f) {
+            camera->SetRotation(targetYaw, targetPitch);
+            isAnimatingCamera = false;
+        }
+    }
+
     for(int i=0; i<(int)modelPoints.size(); i++) {
         myMesh->vertices[i].Position = modelPoints[i].position;
         myMesh->vertices[i].Color = modelPoints[i].color;
@@ -293,7 +328,7 @@ void App::buildUI() {
     }
 
     if (leftDown && glm::distance(selStart, selEnd) > 5.0f) {
-        ImGui::GetForegroundDrawList()->AddRect(ImVec2(selStart.x, selStart.y), ImVec2(selEnd.x, selEnd.y), IM_COL32(255, 255, 0, 255), 0, 0, .9f);
+        ImGui::GetForegroundDrawList()->AddRect(ImVec2(selStart.x, selStart.y), ImVec2(selEnd.x, selEnd.y), IM_COL32(255, 255, 0, 255), 0, 0, 1.5f);
         ImGui::GetForegroundDrawList()->AddRectFilled(ImVec2(selStart.x, selStart.y), ImVec2(selEnd.x, selEnd.y), IM_COL32(255, 255, 0, 40));
     }
 }
@@ -302,12 +337,13 @@ void App::render() {
     int winW, winH, drawW, drawH; 
     SDL_GetWindowSize(window, &winW, &winH);
     SDL_GL_GetDrawableSize(window, &drawW, &drawH);
+    if (winH == 0) winH = 1;
 
+    // --- 1. Draw Main Scene ---
     glViewport(0, 0, drawW, drawH);
     glClearColor(0.12f, 0.12f, 0.15f, 1.0f);
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-    if (winH == 0) winH = 1;
     glm::mat4 v = camera->GetViewMatrix(), p = glm::perspective(glm::radians(45.0f), (float)winW/winH, 0.1f, 100.0f);
 
     glUseProgram(shaderProg);
@@ -321,35 +357,29 @@ void App::render() {
         grid->Draw();
     }
 
-    // --- 1. Draw Faces (Solid) ---
+    // Draw Solid Mesh
     glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
     glUniform1i(glGetUniformLocation(shaderProg, "isPoint"), false);
     glUniform1i(glGetUniformLocation(shaderProg, "overrideColor"), true);
-    glUniform3f(glGetUniformLocation(shaderProg, "colorVec"), 0.45f, 0.45f, 0.45f); // Gray solid
+    glUniform3f(glGetUniformLocation(shaderProg, "colorVec"), 0.45f, 0.45f, 0.45f);
     myMesh->drawMode = GL_TRIANGLES;
     myMesh->Draw();
 
-    // --- 2. Draw Edges (Wireframe) ---
+    // Draw Wireframe Edges
     glEnable(GL_POLYGON_OFFSET_LINE);
-    glPolygonOffset(-1.0f, -1.0f); // Pull lines slightly forward to prevent z-fighting
+    glPolygonOffset(-1.0f, -1.0f);
     glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
-    glUniform3f(glGetUniformLocation(shaderProg, "colorVec"), 0.1f, 0.1f, 0.1f); // Dark edge color
-    myMesh->Draw(); // Draw the exact same triangles, but OpenGL renders them as lines
-    
-    // Reset state back to normal
+    glUniform3f(glGetUniformLocation(shaderProg, "colorVec"), 0.1f, 0.1f, 0.1f);
+    myMesh->Draw();
     glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
     glDisable(GL_POLYGON_OFFSET_LINE);
 
-    // --- 3. Draw Points ---
+    // Draw Points
     if(pointMode) {
         glDisable(GL_DEPTH_TEST); 
-        glEnable(GL_PROGRAM_POINT_SIZE); // Re-assert this because ImGui UI can disable it
-        glPointSize(20.0f); // Fallback size
-
         glUniform1i(glGetUniformLocation(shaderProg, "isPoint"), true);
         glUniform1i(glGetUniformLocation(shaderProg, "overrideColor"), false);
         
-        // Explicitly bypass Mesh class logic to guarantee point rendering
         glBindVertexArray(myMesh->VAO);
         glDrawArrays(GL_POINTS, 0, myMesh->vertices.size());
         glBindVertexArray(0);
@@ -357,6 +387,10 @@ void App::render() {
         glEnable(GL_DEPTH_TEST);
     }
 
+    // --- 2. Draw ViewCube Overlay ---
+    viewCube->draw(camera, winW, winH, drawW, drawH, shaderProg);
+
+    // --- 3. Render ImGui pass (Menu bar, Selection Box, ViewCube text) ---
     ImGui::Render(); 
     ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
 
