@@ -20,25 +20,49 @@ App::App() : window(nullptr), glContext(nullptr), shaderProg(0),
 App::~App() { cleanup(); }
 
 bool App::init() {
-    if (SDL_Init(SDL_INIT_VIDEO) < 0) return false;
+    if (SDL_Init(SDL_INIT_VIDEO) < 0) {
+        std::cerr << "SDL_Init failed: " << SDL_GetError() << std::endl;
+        return false;
+    }
 
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3);
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 3);
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
     SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
-    SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE, 24);
+    // Let SDL automatically choose the best depth buffer for your driver
+    // SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE, 24); 
 
     window = SDL_CreateWindow("Blink3D Engine", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, WINDOW_WIDTH, WINDOW_HEIGHT, SDL_WINDOW_OPENGL | SDL_WINDOW_SHOWN | SDL_WINDOW_RESIZABLE);
-    if (!window) return false;
+    if (!window) {
+        std::cerr << "SDL_CreateWindow failed: " << SDL_GetError() << std::endl;
+        return false;
+    }
 
     glContext = SDL_GL_CreateContext(window);
-    if (!gladLoadGLLoader((GLADloadproc)SDL_GL_GetProcAddress)) return false;
+    if (!glContext) {
+        std::cerr << "SDL_GL_CreateContext failed: " << SDL_GetError() << std::endl;
+        return false;
+    }
+
+    if (!gladLoadGLLoader((GLADloadproc)SDL_GL_GetProcAddress)) {
+        std::cerr << "Failed to initialize GLAD" << std::endl;
+        return false;
+    }
 
     IMGUI_CHECKVERSION();
     ImGui::CreateContext();
     ImGui::StyleColorsDark();
-    ImGui_ImplSDL2_InitForOpenGL(window, glContext);
-    ImGui_ImplOpenGL3_Init("#version 330 core");
+    
+    if (!ImGui_ImplSDL2_InitForOpenGL(window, glContext)) {
+        std::cerr << "ImGui_ImplSDL2_InitForOpenGL failed!" << std::endl;
+        return false;
+    }
+    
+    // Pass nullptr instead of "#version 330 core" to let ImGui auto-detect the best shader version for your Linux driver
+    if (!ImGui_ImplOpenGL3_Init(nullptr)) {
+        std::cerr << "ImGui_ImplOpenGL3_Init failed! Your driver may reject the shader." << std::endl;
+        return false;
+    }
 
     initShaders();
     initGeometry();
@@ -140,7 +164,7 @@ void App::processEvents() {
                 }
                 if(e.button.button == SDL_BUTTON_LEFT) { 
                     int w, h; SDL_GetWindowSize(window, &w, &h);
-                    if (viewCube->handleMousePress(e.button.x, e.button.y, w)) continue; // Handled by ViewCube
+                    if (viewCube->handleMousePress(e.button.x, e.button.y, w)) continue; 
 
                     selStart = glm::vec2(e.button.x, e.button.y); 
                     selEnd = selStart; 
@@ -179,7 +203,7 @@ void App::processEvents() {
                     midDown = false; SDL_SetRelativeMouseMode(SDL_FALSE); 
                 }
                 if(e.button.button == SDL_BUTTON_LEFT) {
-                    if (viewCube->handleMouseRelease()) continue; // Handled by ViewCube
+                    if (viewCube->handleMouseRelease()) continue; 
 
                     if (draggingPoints) draggingPoints = false;
                     
@@ -207,14 +231,14 @@ void App::processEvents() {
             
             if(e.type == SDL_MOUSEMOTION) {
                 if (viewCube->handleMouseMotion(e.motion.xrel, e.motion.yrel, camera)) {
-                    isAnimatingCamera = false; // Cancel animation if viewcube is grabbed
+                    isAnimatingCamera = false;
                     targetYaw = camera->Yaw;
                     targetPitch = camera->Pitch;
                     continue;
                 }
 
                 if(midDown) {
-                    isAnimatingCamera = false; // Cancel animation on manual orbit
+                    isAnimatingCamera = false;
                     if(isShift) camera->ProcessMousePan(e.motion.xrel, -e.motion.yrel);
                     else camera->ProcessMouseOrbit(e.motion.xrel, -e.motion.yrel);
                     
@@ -247,7 +271,6 @@ void App::processEvents() {
             // --- Smoothed Parametric Snapping Logic ---
             if(e.key.keysym.sym == SDLK_z && e.key.repeat == 0) {
                 zHeld = true;
-                // Snap to the *nearest* 90 degree increment for a smooth transition
                 targetYaw = std::round(camera->Yaw / 90.0f) * 90.0f;
                 if (camera->Pitch > 45.0f) targetPitch = 89.0f;
                 else if (camera->Pitch < -45.0f) targetPitch = -89.0f;
@@ -257,13 +280,11 @@ void App::processEvents() {
             }
             
             if(zHeld && e.key.repeat == 0) {
-                // Cycle relative to the current target, allowing infinite rotation!
                 if(e.key.keysym.sym == SDLK_UP) { targetPitch += 89.0f; isAnimatingCamera = true; }
                 if(e.key.keysym.sym == SDLK_DOWN) { targetPitch -= 89.0f; isAnimatingCamera = true; }
                 if(e.key.keysym.sym == SDLK_LEFT) { targetYaw -= 90.0f; isAnimatingCamera = true; }
                 if(e.key.keysym.sym == SDLK_RIGHT) { targetYaw += 90.0f; isAnimatingCamera = true; }
                 
-                // Clamp pitch to avoid turning completely upside down
                 if (targetPitch > 89.0f) targetPitch = 89.0f;
                 if (targetPitch < -89.0f) targetPitch = -89.0f;
             }
@@ -279,27 +300,24 @@ void App::run() {
     while(isRunning) {
         processEvents();
         
-        // Start ImGui Frame
         ImGui_ImplOpenGL3_NewFrame();
         ImGui_ImplSDL2_NewFrame();
         ImGui::NewFrame();
         
         update();
         buildUI();
-        render(); // Rendering pipeline applies ImGui at the very end
+        render(); 
     }
 }
 
 void App::update() {
-    // --- Camera Animation Lerp ---
     if (isAnimatingCamera) {
-        float lerpSpeed = 0.15f; // Tweak this decimal for faster/slower snaps
+        float lerpSpeed = 0.15f; 
         float newYaw = camera->Yaw + (targetYaw - camera->Yaw) * lerpSpeed;
         float newPitch = camera->Pitch + (targetPitch - camera->Pitch) * lerpSpeed;
         
         camera->SetRotation(newYaw, newPitch);
 
-        // Snap perfectly and stop calculating if we are close enough
         if (std::abs(targetYaw - camera->Yaw) < 0.1f && std::abs(targetPitch - camera->Pitch) < 0.1f) {
             camera->SetRotation(targetYaw, targetPitch);
             isAnimatingCamera = false;
@@ -339,7 +357,6 @@ void App::render() {
     SDL_GL_GetDrawableSize(window, &drawW, &drawH);
     if (winH == 0) winH = 1;
 
-    // --- 1. Draw Main Scene ---
     glViewport(0, 0, drawW, drawH);
     glClearColor(0.12f, 0.12f, 0.15f, 1.0f);
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
@@ -357,7 +374,6 @@ void App::render() {
         grid->Draw();
     }
 
-    // Draw Solid Mesh
     glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
     glUniform1i(glGetUniformLocation(shaderProg, "isPoint"), false);
     glUniform1i(glGetUniformLocation(shaderProg, "overrideColor"), true);
@@ -365,7 +381,6 @@ void App::render() {
     myMesh->drawMode = GL_TRIANGLES;
     myMesh->Draw();
 
-    // Draw Wireframe Edges
     glEnable(GL_POLYGON_OFFSET_LINE);
     glPolygonOffset(-1.0f, -1.0f);
     glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
@@ -374,7 +389,6 @@ void App::render() {
     glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
     glDisable(GL_POLYGON_OFFSET_LINE);
 
-    // Draw Points
     if(pointMode) {
         glDisable(GL_DEPTH_TEST); 
         glUniform1i(glGetUniformLocation(shaderProg, "isPoint"), true);
@@ -387,10 +401,8 @@ void App::render() {
         glEnable(GL_DEPTH_TEST);
     }
 
-    // --- 2. Draw ViewCube Overlay ---
     viewCube->draw(camera, winW, winH, drawW, drawH, shaderProg);
 
-    // --- 3. Render ImGui pass (Menu bar, Selection Box, ViewCube text) ---
     ImGui::Render(); 
     ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
 
@@ -398,8 +410,19 @@ void App::render() {
 }
 
 void App::cleanup() {
-    ImGui_ImplOpenGL3_Shutdown(); ImGui_ImplSDL2_Shutdown(); ImGui::DestroyContext();
-    if(glContext) SDL_GL_DeleteContext(glContext);
-    if(window) SDL_DestroyWindow(window);
+    // 1. Check if ImGui was successfully established
+    if (ImGui::GetCurrentContext()) {
+        // 2. Safeguard: Only shut down backends if they were actually initialized!
+        if (ImGui::GetIO().BackendRendererUserData != nullptr) {
+            ImGui_ImplOpenGL3_Shutdown();
+        }
+        if (ImGui::GetIO().BackendPlatformUserData != nullptr) {
+            ImGui_ImplSDL2_Shutdown();
+        }
+        ImGui::DestroyContext();
+    }
+    
+    if(glContext) { SDL_GL_DeleteContext(glContext); glContext = nullptr; }
+    if(window) { SDL_DestroyWindow(window); window = nullptr; }
     SDL_Quit();
 }

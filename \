@@ -1,0 +1,38 @@
+{
+  description = "Blink3D Engine Development Environment";
+
+  inputs = {
+    nixpkgs.url = "github:nixos/nixpkgs/nixos-unstable";
+  };
+
+  outputs = { self, nixpkgs }:
+    let
+      # Define supported systems so this works on other machines too
+      supportedSystems = [ "x86_64-linux" "aarch64-linux" "x86_64-darwin" "aarch64-darwin" ];
+      forAllSystems = nixpkgs.lib.genAttrs supportedSystems;
+      pkgs = forAllSystems (system: import nixpkgs { inherit system; });
+    in
+    {
+      devShells = forAllSystems (system: {
+        default = pkgs.${system}.mkShell {
+          
+          # These are the dependencies your project needs to compile and run
+          buildInputs = with pkgs.${system}; [
+            gcc           # C++ Compiler
+            gnumake       # (Optional) if you want to make a Makefile later
+            SDL2          # Windowing and Input
+            glm           # OpenGL Mathematics
+            libGL         # OpenGL bindings
+            pkg-config    # Tool to locate libraries
+            libx11        # <-- FIXED: Replaced deprecated xorg.libX11
+          ];
+
+          # A nice hook to run when you enter the environment
+          shellHook = ''
+            echo "Blink3D Loaded!"
+            echo "packages Provided by Nix: GCC, SDL2, GLM, libGL, X11"
+          '';
+        };
+      });
+    };
+}
