@@ -24,7 +24,7 @@ sh <(curl --proto '=https' --tlsv1.2 -L https://nixos.org/nix/install) --daemon
 nix develop
 ```
 ```
-nix run --impure github:nix-community/nixGL -- ./Blink3D
+_run make command given from dev output_
 ```
 
 
