@@ -30,5 +30,6 @@ nix run --impure github:nix-community/nixGL -- ./Blink3D
 ## SHORTCUTS
 |task|execution|
 |-----|-------|
-|**snap to front parametric**| **z**|
+|**snap to parametric**| **z**|
+|**slide parametric**| **z+[arrow key]**|
 |**toggle point visability**|**p** |
