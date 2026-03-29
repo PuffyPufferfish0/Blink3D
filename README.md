@@ -13,6 +13,15 @@ run after make
 ```
 ./App
 ```
+### Nix compatible!
+make sure you have nix installed 
+```
+sh <(curl --proto '=https' --tlsv1.2 -L https://nixos.org/nix/install) --daemon
+```
+- ```nix develop```
+- ```nix run --impure github:nix-community/nixGL -- ./Blink3D```
+
+
 
 ## SHORTCUTS
 |task|execution|
