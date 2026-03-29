@@ -23,9 +23,9 @@ sh <(curl --proto '=https' --tlsv1.2 -L https://nixos.org/nix/install) --daemon
 ```
 nix develop
 ```
-```
+
 _run make command given from dev output_
-```
+
 
 
 
