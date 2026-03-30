@@ -39,4 +39,5 @@ _run make command given from dev output_
 |**slide parametric**| **z + [arrow key]**|
 |**toggle point visability**|**p** |
 |**snap point**|**select point, s**|
+|**swtich target mode**|**1,2,3**|
 
