@@ -6,6 +6,8 @@
 #include "Camera.h"
 #include "Mesh.h"
 #include "Point.h"
+#include "Line.h"
+#include "SplitTool.h"
 #include "ViewCube.h"
 #include "Toolbar.h"
 #include "TransformGizmo.h"
@@ -32,6 +34,7 @@ private:
     Mesh* myMesh;
     Mesh* grid;
     std::vector<Point> modelPoints;
+    std::vector<Line> modelLines;
     
     // UI/Interaction State
     bool isRunning;
@@ -41,9 +44,15 @@ private:
     float targetYaw, targetPitch;
 
     // Undo/Redo State
-    std::vector<std::vector<Point>> history;
+    struct EditState {
+        std::vector<Point> points;
+        std::vector<unsigned int> indices;
+        std::vector<Line> lines; // Line selections are now snapshot safe!
+    };
+    std::vector<EditState> history;
     int historyIndex;
     bool hasUnsavedChanges;
+    std::vector<int> selectedIndices; // Tracks the exact order points are selected
 
     // Helper Methods
     void saveState();
@@ -56,6 +65,7 @@ private:
     void render();
     void cleanup();
     
+    void extractLinesFromMesh();
     void initShaders();
     void initGeometry();
 };

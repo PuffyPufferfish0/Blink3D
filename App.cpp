@@ -120,40 +120,87 @@ void App::initGeometry() {
     }
     grid = new Mesh(gv, GL_LINES);
 
+    // Initial extraction of the edges based on the triangles
+    extractLinesFromMesh();
+
     // Initialize the very first state in our history timeline
     history.clear();
     historyIndex = -1;
     saveState();
 }
 
+void App::extractLinesFromMesh() {
+    modelLines.clear();
+    for (size_t i = 0; i < myMesh->indices.size(); i += 3) {
+        Line l1(myMesh->indices[i], myMesh->indices[i+1]);
+        Line l2(myMesh->indices[i+1], myMesh->indices[i+2]);
+        Line l3(myMesh->indices[i+2], myMesh->indices[i]);
+        
+        // Only push unique edges to avoid drawing Z-fighting duplicates
+        if (std::find(modelLines.begin(), modelLines.end(), l1) == modelLines.end()) modelLines.push_back(l1);
+        if (std::find(modelLines.begin(), modelLines.end(), l2) == modelLines.end()) modelLines.push_back(l2);
+        if (std::find(modelLines.begin(), modelLines.end(), l3) == modelLines.end()) modelLines.push_back(l3);
+    }
+}
+
 void App::saveState() {
-    // If we've travelled back in time and make a new change, discard the "future"
     if (historyIndex < (int)history.size() - 1) {
         history.erase(history.begin() + historyIndex + 1, history.end());
     }
-    // Snapshot the entire state of our geometry
-    history.push_back(modelPoints);
+    history.push_back({modelPoints, myMesh->indices, modelLines});
     historyIndex++;
 }
 
 void App::undo() {
     if (historyIndex > 0) {
         historyIndex--;
-        modelPoints = history[historyIndex];
-        gizmo->updateState(modelPoints); // Move gizmo to match restored points
+        modelPoints = history[historyIndex].points;
+        modelLines = history[historyIndex].lines;
+        
+        std::vector<Vertex> verts;
+        for(auto& p : modelPoints) verts.push_back({p.position, p.color});
+        delete myMesh;
+        myMesh = new Mesh(verts, GL_TRIANGLES, history[historyIndex].indices);
+        
+        selectedIndices.clear();
+        for (int i = 0; i < (int)modelPoints.size(); i++) {
+            if (modelPoints[i].selected) selectedIndices.push_back(i);
+        }
+        gizmo->updateState(modelPoints, modelLines);
     }
 }
 
 void App::redo() {
     if (historyIndex < (int)history.size() - 1) {
         historyIndex++;
-        modelPoints = history[historyIndex];
-        gizmo->updateState(modelPoints); // Move gizmo to match restored points
+        modelPoints = history[historyIndex].points;
+        modelLines = history[historyIndex].lines;
+        
+        std::vector<Vertex> verts;
+        for(auto& p : modelPoints) verts.push_back({p.position, p.color});
+        delete myMesh;
+        myMesh = new Mesh(verts, GL_TRIANGLES, history[historyIndex].indices);
+        
+        selectedIndices.clear();
+        for (int i = 0; i < (int)modelPoints.size(); i++) {
+            if (modelPoints[i].selected) selectedIndices.push_back(i);
+        }
+        gizmo->updateState(modelPoints, modelLines);
     }
 }
 
 void App::processEvents() {
     SDL_Event e;
+    
+    // Fast math helper for projecting lines into 2D screen space for clicking
+    auto distToSegment = [](glm::vec2 p, glm::vec2 v, glm::vec2 w) {
+        float l2 = glm::distance(v, w) * glm::distance(v, w);
+        if (l2 == 0.0f) return glm::distance(p, v);
+        float t = std::max(0.0f, std::min(1.0f, glm::dot(p - v, w - v) / l2));
+        glm::vec2 projection = v + t * (w - v);
+        return glm::distance(p, projection);
+    };
+    
     while(SDL_PollEvent(&e)) {
         ImGui_ImplSDL2_ProcessEvent(&e);
         if(e.type == SDL_QUIT) isRunning = false;
@@ -175,48 +222,84 @@ void App::processEvents() {
                     
                     if (viewCube->handleMousePress(e.button.x, e.button.y, w)) continue; 
 
-                    // 1. Try passing the click to the Gizmo first!
                     if (toolbar->currentTool == ToolMode::MOVE && gizmo->handleMousePress(e.button.x, e.button.y, camera, w, h)) {
-                        continue; // The gizmo was clicked, skip regular selection
+                        continue; 
                     }
 
-                    // 2. Gizmo wasn't clicked, handle point selection as normal
                     selStart = glm::vec2(e.button.x, e.button.y); 
                     selEnd = selStart; 
 
                     glm::mat4 v = camera->GetViewMatrix(), p_mat = glm::perspective(glm::radians(45.0f), (float)w/h, 0.1f, 100.0f);
                     
-                    int best = -1; float d_min = 40.0f; 
-                    for(int i=0; i<(int)modelPoints.size(); i++){
-                        glm::vec4 clip = p_mat * v * glm::vec4(modelPoints[i].position, 1.0f);
-                        if(clip.w > 0) {
-                            glm::vec3 ndc = glm::vec3(clip)/clip.w;
-                            float d = glm::distance(selStart, glm::vec2((ndc.x+1)*0.5f*w, (1-ndc.y)*0.5f*h));
-                            if(d < d_min) { d_min = d; best = i; }
-                        }
-                    }
-
-                    if(best != -1) {
-                        if (!modelPoints[best].selected) {
-                            if (!ctrl) for(auto& p : modelPoints) p.deselect();
-                            modelPoints[best].select();
-                            saveState(); // Snapshot selection
-                            draggingPoints = true; // Enable free drag
-                        } else {
-                            if (ctrl) {
-                                modelPoints[best].deselect();
-                                saveState(); // Snapshot deselection
+                    if (toolbar->selectMode == SelectMode::LINE) {
+                        int best = -1; float d_min = 15.0f; // Click snapping threshold
+                        for(int i=0; i<(int)modelLines.size(); i++){
+                            glm::vec4 c1 = p_mat * v * glm::vec4(modelPoints[modelLines[i].v1].position, 1.0f);
+                            glm::vec4 c2 = p_mat * v * glm::vec4(modelPoints[modelLines[i].v2].position, 1.0f);
+                            if(c1.w > 0 && c2.w > 0) {
+                                glm::vec2 s1((c1.x/c1.w+1)*0.5f*w, (1-c1.y/c1.w)*0.5f*h);
+                                glm::vec2 s2((c2.x/c2.w+1)*0.5f*w, (1-c2.y/c2.w)*0.5f*h);
+                                float d = distToSegment(selStart, s1, s2);
+                                if(d < d_min) { d_min = d; best = i; }
                             }
-                            else draggingPoints = true; // Grab already selected points
                         }
-                    } else {
-                        leftDown = true; 
-                        bool changed = false;
-                        if(!ctrl) {
-                            for(auto& p : modelPoints) { if (p.selected) changed = true; p.deselect(); }
+
+                        if(best != -1) {
+                            if (!modelLines[best].selected) {
+                                if (!ctrl) for(auto& l : modelLines) l.deselect();
+                                modelLines[best].select();
+                                saveState();
+                                draggingPoints = true;
+                            } else {
+                                if (ctrl) { modelLines[best].deselect(); saveState(); }
+                                else draggingPoints = true;
+                            }
+                        } else {
+                            leftDown = true; 
+                            bool changed = false;
+                            if(!ctrl) {
+                                for(auto& l : modelLines) { if (l.selected) changed = true; l.deselect(); }
+                            }
+                            if (changed) saveState(); 
                         }
-                        // Only save state if we actually cleared a selection
-                        if (changed) saveState(); 
+                    } else { // Standard Point Selection
+                        int best = -1; float d_min = 40.0f; 
+                        for(int i=0; i<(int)modelPoints.size(); i++){
+                            glm::vec4 clip = p_mat * v * glm::vec4(modelPoints[i].position, 1.0f);
+                            if(clip.w > 0) {
+                                glm::vec3 ndc = glm::vec3(clip)/clip.w;
+                                float d = glm::distance(selStart, glm::vec2((ndc.x+1)*0.5f*w, (1-ndc.y)*0.5f*h));
+                                if(d < d_min) { d_min = d; best = i; }
+                            }
+                        }
+
+                        if(best != -1) {
+                            if (!modelPoints[best].selected) {
+                                if (!ctrl) {
+                                    for(auto& p : modelPoints) p.deselect();
+                                    selectedIndices.clear();
+                                }
+                                modelPoints[best].select();
+                                selectedIndices.push_back(best);
+                                saveState(); 
+                                draggingPoints = true; 
+                            } else {
+                                if (ctrl) {
+                                    modelPoints[best].deselect();
+                                    selectedIndices.erase(std::remove(selectedIndices.begin(), selectedIndices.end(), best), selectedIndices.end());
+                                    saveState(); 
+                                }
+                                else draggingPoints = true; 
+                            }
+                        } else {
+                            leftDown = true; 
+                            bool changed = false;
+                            if(!ctrl) {
+                                for(auto& p : modelPoints) { if (p.selected) changed = true; p.deselect(); }
+                                selectedIndices.clear();
+                            }
+                            if (changed) saveState(); 
+                        }
                     }
                 }
             }
@@ -234,7 +317,7 @@ void App::processEvents() {
                     }
                     
                     if (draggingPoints) {
-                        draggingPoints = false; // Drop free-dragged points
+                        draggingPoints = false;
                         if (hasUnsavedChanges) { saveState(); hasUnsavedChanges = false; }
                     }
                     
@@ -249,18 +332,24 @@ void App::processEvents() {
                             float y1 = std::min(selStart.y, selEnd.y), y2 = std::max(selStart.y, selEnd.y);
                             bool changed = false;
                             
-                            for(auto& p_obj : modelPoints) {
-                                glm::vec4 clip = p_mat * v * glm::vec4(p_obj.position, 1.0f);
-                                if(clip.w > 0) {
-                                    glm::vec3 ndc = glm::vec3(clip)/clip.w;
-                                    glm::vec2 sp((ndc.x+1)*0.5f*w, (1-ndc.y)*0.5f*h);
-                                    if(sp.x >= x1 && sp.x <= x2 && sp.y >= y1 && sp.y <= y2) {
-                                        if (!p_obj.selected) changed = true;
-                                        p_obj.select();
+                            if (toolbar->selectMode == SelectMode::POINT) {
+                                for(int i = 0; i < (int)modelPoints.size(); i++) {
+                                    auto& p_obj = modelPoints[i];
+                                    glm::vec4 clip = p_mat * v * glm::vec4(p_obj.position, 1.0f);
+                                    if(clip.w > 0) {
+                                        glm::vec3 ndc = glm::vec3(clip)/clip.w;
+                                        glm::vec2 sp((ndc.x+1)*0.5f*w, (1-ndc.y)*0.5f*h);
+                                        if(sp.x >= x1 && sp.x <= x2 && sp.y >= y1 && sp.y <= y2) {
+                                            if (!p_obj.selected) {
+                                                changed = true;
+                                                p_obj.select();
+                                                selectedIndices.push_back(i);
+                                            }
+                                        }
                                     }
                                 }
                             }
-                            if (changed) saveState(); // Snapshot box selection
+                            if (changed) saveState(); 
                         }
                     }
                 }
@@ -277,19 +366,23 @@ void App::processEvents() {
                 int w, h; SDL_GetWindowSize(window, &w, &h);
                 if (h == 0) h = 1;
                 
-                if (gizmo->handleMouseMotion(e.motion.xrel, e.motion.yrel, camera, w, h, modelPoints)) {
-                    hasUnsavedChanges = true; // Flag that a continuous translation is occurring
+                if (gizmo->handleMouseMotion(e.motion.xrel, e.motion.yrel, camera, w, h, modelPoints, modelLines)) {
+                    hasUnsavedChanges = true; 
                     continue; 
                 }
 
                 if (draggingPoints) {
-                    hasUnsavedChanges = true; // Flag that a continuous translation is occurring
-                    // Free translation using camera projection planes
+                    hasUnsavedChanges = true; 
                     float unitsPerPixel = (camera->Distance * 0.8284f) / (float)h;
                     glm::vec3 moveDelta = camera->Right * ((float)e.motion.xrel * unitsPerPixel) 
                                         - camera->Up    * ((float)e.motion.yrel * unitsPerPixel);
-                    for(auto& p : modelPoints) {
-                        if(p.selected) p.position += moveDelta;
+                                        
+                    std::vector<bool> moveFlag(modelPoints.size(), false);
+                    for (size_t i = 0; i < modelPoints.size(); i++) if (modelPoints[i].selected) moveFlag[i] = true;
+                    for (const auto& l : modelLines) if (l.selected) { moveFlag[l.v1] = true; moveFlag[l.v2] = true; }
+                    
+                    for (size_t i = 0; i < modelPoints.size(); i++) {
+                        if (moveFlag[i]) modelPoints[i].position += moveDelta;
                     }
                 }
 
@@ -303,7 +396,7 @@ void App::processEvents() {
                 }
                 if(leftDown) selEnd = glm::vec2(e.motion.x, e.motion.y);
             }
-        }
+        } // End Mouse/Input Capture branch
         
         if(e.type == SDL_KEYDOWN) {
             const Uint8* kState = SDL_GetKeyboardState(NULL);
@@ -311,17 +404,75 @@ void App::processEvents() {
             
             if(e.key.keysym.sym == SDLK_p) pointMode = !pointMode;
             
+            // Interaction Mode Keyboard Shortcuts
+            if(e.key.keysym.sym == SDLK_1) toolbar->selectMode = SelectMode::POINT;
+            if(e.key.keysym.sym == SDLK_2) toolbar->selectMode = SelectMode::LINE;
+            
+            // Tool Keyboard Shortcuts
             if(e.key.keysym.sym == SDLK_t) toolbar->currentTool = ToolMode::MOVE;
             if(e.key.keysym.sym == SDLK_r) toolbar->currentTool = ToolMode::ROTATE;
             if(e.key.keysym.sym == SDLK_e) toolbar->currentTool = ToolMode::SCALE;
             
+            // SPLIT TOOL EXECUTION
+            if(e.key.keysym.sym == SDLK_q) {
+                if (SplitTool::execute(modelPoints, myMesh->indices, modelLines)) {
+                    // Regenerate GPU Topology safely
+                    std::vector<Vertex> verts;
+                    for(auto& p : modelPoints) verts.push_back({p.position, p.color});
+                    std::vector<unsigned int> newInds = myMesh->indices;
+                    delete myMesh;
+                    myMesh = new Mesh(verts, GL_TRIANGLES, newInds);
+                    
+                    // Reset topology trackers safely
+                    extractLinesFromMesh();
+                    for(auto& l : modelLines) l.deselect();
+                    for(auto& p : modelPoints) p.deselect();
+                    selectedIndices.clear();
+                    
+                    gizmo->updateState(modelPoints, modelLines);
+                    saveState(); 
+                }
+            }
+            
             if(e.key.keysym.sym == SDLK_s) {
-                glm::vec3 avg(0); int c = 0;
-                for(auto& pt : modelPoints) if(pt.selected) { avg += pt.position; c++; }
-                if(c > 1) { 
-                    avg /= (float)c; 
-                    for(auto& pt : modelPoints) if(pt.selected) pt.position = avg; 
-                    saveState(); // Snapshot point merge
+                if(selectedIndices.size() >= 2) {
+                    // Ordered snapping: First point merges completely into the second point
+                    int sourceIdx = selectedIndices[0];
+                    int targetIdx = selectedIndices[1];
+                    
+                    // 1. Remap mesh indices to point to the target instead of the source
+                    for (size_t i = 0; i < myMesh->indices.size(); i++) {
+                        if (myMesh->indices[i] == (unsigned int)sourceIdx) {
+                            myMesh->indices[i] = targetIdx;
+                        }
+                    }
+                    
+                    // 2. Erase the source point entirely from the model
+                    modelPoints.erase(modelPoints.begin() + sourceIdx);
+                    
+                    // 3. Shift all subsequent indices down by 1 to accommodate the deletion
+                    for (size_t i = 0; i < myMesh->indices.size(); i++) {
+                        if (myMesh->indices[i] > (unsigned int)sourceIdx) {
+                            myMesh->indices[i]--;
+                        }
+                    }
+                    
+                    // 4. Rebuild the mesh to upload the new topology to the GPU
+                    std::vector<Vertex> verts;
+                    for(auto& p : modelPoints) verts.push_back({p.position, p.color});
+                    std::vector<unsigned int> newIndices = myMesh->indices;
+                    delete myMesh;
+                    myMesh = new Mesh(verts, GL_TRIANGLES, newIndices);
+                    
+                    // 5. Clear selections so we don't hold invalid indexes
+                    for(auto& pt : modelPoints) pt.deselect();
+                    selectedIndices.clear();
+                    
+                    // Re-extract lines for UI since topology changed
+                    extractLinesFromMesh();
+                    gizmo->updateState(modelPoints, modelLines);
+                    
+                    saveState(); // Snapshot structural merge
                 }
             }
             
@@ -339,14 +490,12 @@ void App::processEvents() {
                 isAnimatingCamera = true;
             }
             
-            // Check true OS state for 'Z' key to allow smooth holding/tapping
-            if(kState[SDL_SCANCODE_Z] && e.key.repeat == 0) {
+            if(kState[SDL_SCANCODE_Z] && e.key.repeat == 0 && !ctrl) {
                 if(e.key.keysym.sym == SDLK_UP) { targetPitch += 90.0f; isAnimatingCamera = true; }
                 if(e.key.keysym.sym == SDLK_DOWN) { targetPitch -= 90.0f; isAnimatingCamera = true; }
                 if(e.key.keysym.sym == SDLK_LEFT) { targetYaw -= 90.0f; isAnimatingCamera = true; }
                 if(e.key.keysym.sym == SDLK_RIGHT) { targetYaw += 90.0f; isAnimatingCamera = true; }
                 
-                // Euler wrap-around to allow infinite vertical looping!
                 if (targetPitch > 90.1f) {
                     targetPitch -= 180.0f;
                     targetYaw += 180.0f;
@@ -400,8 +549,8 @@ void App::update() {
     }
     myMesh->updateGPUData();
     
-    // Refresh Gizmo's position based on points
-    gizmo->updateState(modelPoints);
+    // Refresh Gizmo's position based on unified points and lines
+    gizmo->updateState(modelPoints, modelLines);
 }
 
 void App::buildUI() {
@@ -465,6 +614,37 @@ void App::render() {
     myMesh->Draw();
     glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
     glDisable(GL_POLYGON_OFFSET_LINE);
+    
+    // Render HIGHLIGHTED Selection Lines in bright yellow!
+    std::vector<Vertex> selLineVerts;
+    for (const auto& l : modelLines) {
+        if (l.selected) {
+            selLineVerts.push_back({modelPoints[l.v1].position, glm::vec3(1.0f, 1.0f, 0.0f)});
+            selLineVerts.push_back({modelPoints[l.v2].position, glm::vec3(1.0f, 1.0f, 0.0f)});
+        }
+    }
+    if (!selLineVerts.empty()) {
+        GLuint vao, vbo;
+        glGenVertexArrays(1, &vao);
+        glGenBuffers(1, &vbo);
+        glBindVertexArray(vao);
+        glBindBuffer(GL_ARRAY_BUFFER, vbo);
+        glBufferData(GL_ARRAY_BUFFER, selLineVerts.size() * sizeof(Vertex), selLineVerts.data(), GL_STATIC_DRAW);
+        glEnableVertexAttribArray(0);
+        glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)0);
+        glEnableVertexAttribArray(1);
+        glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)offsetof(Vertex, Color));
+        
+        glDisable(GL_DEPTH_TEST); // Draw over the mesh
+        glUseProgram(shaderProg);
+        glUniform1i(glGetUniformLocation(shaderProg, "isPoint"), false);
+        glUniform1i(glGetUniformLocation(shaderProg, "overrideColor"), false);
+        glDrawArrays(GL_LINES, 0, selLineVerts.size());
+        
+        glEnable(GL_DEPTH_TEST);
+        glDeleteBuffers(1, &vbo);
+        glDeleteVertexArrays(1, &vao);
+    }
 
     if(pointMode) {
         glDisable(GL_DEPTH_TEST); 
@@ -509,4 +689,4 @@ void App::cleanup() {
     if(glContext) { SDL_GL_DeleteContext(glContext); glContext = nullptr; }
     if(window) { SDL_DestroyWindow(window); window = nullptr; }
     SDL_Quit();
-}   
+}

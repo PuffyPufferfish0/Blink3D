@@ -39,14 +39,21 @@ void TransformGizmo::init() {
     gizmoMeshZ = new Mesh(buildAxisLine({0,0,1}, {0,0,1}), GL_LINES);
 }
 
-void TransformGizmo::updateState(const std::vector<Point>& points) {
+void TransformGizmo::updateState(const std::vector<Point>& points, const std::vector<Line>& lines) {
     glm::vec3 avg(0.0f);
     int count = 0;
-    for (const auto& p : points) {
-        if (p.selected) { avg += p.position; count++; }
+    
+    // Build a unified map of which physical vertices are selected via points OR via lines
+    std::vector<bool> moveFlag(points.size(), false);
+    for (size_t i = 0; i < points.size(); i++) if (points[i].selected) moveFlag[i] = true;
+    for (const auto& l : lines) if (l.selected) { moveFlag[l.v1] = true; moveFlag[l.v2] = true; }
+
+    for (size_t i = 0; i < points.size(); i++) {
+        if (moveFlag[i]) { avg += points[i].position; count++; }
     }
+    
     isVisible = (count > 0);
-    // Position Gizmo in the dead center of all selected points
+    // Position Gizmo in the dead center of the active selection geometry
     if (isVisible) position = avg / (float)count; 
 }
 
@@ -131,7 +138,7 @@ bool TransformGizmo::handleMouseRelease() {
     return false;
 }
 
-bool TransformGizmo::handleMouseMotion(int xrel, int yrel, Camera* cam, int winW, int winH, std::vector<Point>& points) {
+bool TransformGizmo::handleMouseMotion(int xrel, int yrel, Camera* cam, int winW, int winH, std::vector<Point>& points, const std::vector<Line>& lines) {
     if (!isDragging || activeAxis == NONE) return false;
 
     glm::mat4 v = cam->GetViewMatrix();
@@ -162,8 +169,13 @@ bool TransformGizmo::handleMouseMotion(int xrel, int yrel, Camera* cam, int winW
         float moveAmount = glm::dot(mouseDelta, axis2D) / lenSq;
         float trueAmount = moveAmount * scale;
         
-        for (auto& pt : points) {
-            if (pt.selected) pt.position += dir * trueAmount;
+        // Gather ALL points that belong to the active selection (Points + Lines)
+        std::vector<bool> moveFlag(points.size(), false);
+        for (size_t i = 0; i < points.size(); i++) if (points[i].selected) moveFlag[i] = true;
+        for (const auto& l : lines) if (l.selected) { moveFlag[l.v1] = true; moveFlag[l.v2] = true; }
+        
+        for (size_t i = 0; i < points.size(); i++) {
+            if (moveFlag[i]) points[i].position += dir * trueAmount;
         }
         position += dir * trueAmount; 
     }
