@@ -16,7 +16,8 @@ App::App() : window(nullptr), glContext(nullptr), shaderProg(0),
              isRunning(true), leftDown(false), midDown(false), ctrlHeld(false), 
              isAnimatingCamera(false), draggingPoints(false),
              showGrid(true), pointMode(true), selStart(0), selEnd(0),
-             targetYaw(-90.0f), targetPitch(0.0f) {}
+             targetYaw(-90.0f), targetPitch(0.0f),
+             historyIndex(-1), hasUnsavedChanges(false) {}
 
 App::~App() { cleanup(); }
 
@@ -118,6 +119,37 @@ void App::initGeometry() {
         gv.push_back({glm::vec3(-10,0,i), glm::vec3(0.3f)}); gv.push_back({glm::vec3(10,0,i), glm::vec3(0.3f)});
     }
     grid = new Mesh(gv, GL_LINES);
+
+    // Initialize the very first state in our history timeline
+    history.clear();
+    historyIndex = -1;
+    saveState();
+}
+
+void App::saveState() {
+    // If we've travelled back in time and make a new change, discard the "future"
+    if (historyIndex < (int)history.size() - 1) {
+        history.erase(history.begin() + historyIndex + 1, history.end());
+    }
+    // Snapshot the entire state of our geometry
+    history.push_back(modelPoints);
+    historyIndex++;
+}
+
+void App::undo() {
+    if (historyIndex > 0) {
+        historyIndex--;
+        modelPoints = history[historyIndex];
+        gizmo->updateState(modelPoints); // Move gizmo to match restored points
+    }
+}
+
+void App::redo() {
+    if (historyIndex < (int)history.size() - 1) {
+        historyIndex++;
+        modelPoints = history[historyIndex];
+        gizmo->updateState(modelPoints); // Move gizmo to match restored points
+    }
 }
 
 void App::processEvents() {
@@ -168,14 +200,23 @@ void App::processEvents() {
                         if (!modelPoints[best].selected) {
                             if (!ctrl) for(auto& p : modelPoints) p.deselect();
                             modelPoints[best].select();
+                            saveState(); // Snapshot selection
                             draggingPoints = true; // Enable free drag
                         } else {
-                            if (ctrl) modelPoints[best].deselect();
+                            if (ctrl) {
+                                modelPoints[best].deselect();
+                                saveState(); // Snapshot deselection
+                            }
                             else draggingPoints = true; // Grab already selected points
                         }
                     } else {
                         leftDown = true; 
-                        if(!ctrl) for(auto& p : modelPoints) p.deselect();
+                        bool changed = false;
+                        if(!ctrl) {
+                            for(auto& p : modelPoints) { if (p.selected) changed = true; p.deselect(); }
+                        }
+                        // Only save state if we actually cleared a selection
+                        if (changed) saveState(); 
                     }
                 }
             }
@@ -186,9 +227,16 @@ void App::processEvents() {
                 }
                 if(e.button.button == SDL_BUTTON_LEFT) {
                     if (viewCube->handleMouseRelease()) continue; 
-                    if (gizmo->handleMouseRelease()) continue; 
                     
-                    if (draggingPoints) draggingPoints = false; // Drop free-dragged points
+                    if (gizmo->handleMouseRelease()) {
+                        if (hasUnsavedChanges) { saveState(); hasUnsavedChanges = false; }
+                        continue; 
+                    }
+                    
+                    if (draggingPoints) {
+                        draggingPoints = false; // Drop free-dragged points
+                        if (hasUnsavedChanges) { saveState(); hasUnsavedChanges = false; }
+                    }
                     
                     if (leftDown) {
                         leftDown = false;
@@ -199,14 +247,20 @@ void App::processEvents() {
                             
                             float x1 = std::min(selStart.x, selEnd.x), x2 = std::max(selStart.x, selEnd.x);
                             float y1 = std::min(selStart.y, selEnd.y), y2 = std::max(selStart.y, selEnd.y);
+                            bool changed = false;
+                            
                             for(auto& p_obj : modelPoints) {
                                 glm::vec4 clip = p_mat * v * glm::vec4(p_obj.position, 1.0f);
                                 if(clip.w > 0) {
                                     glm::vec3 ndc = glm::vec3(clip)/clip.w;
                                     glm::vec2 sp((ndc.x+1)*0.5f*w, (1-ndc.y)*0.5f*h);
-                                    if(sp.x >= x1 && sp.x <= x2 && sp.y >= y1 && sp.y <= y2) p_obj.select();
+                                    if(sp.x >= x1 && sp.x <= x2 && sp.y >= y1 && sp.y <= y2) {
+                                        if (!p_obj.selected) changed = true;
+                                        p_obj.select();
+                                    }
                                 }
                             }
+                            if (changed) saveState(); // Snapshot box selection
                         }
                     }
                 }
@@ -224,10 +278,12 @@ void App::processEvents() {
                 if (h == 0) h = 1;
                 
                 if (gizmo->handleMouseMotion(e.motion.xrel, e.motion.yrel, camera, w, h, modelPoints)) {
-                    continue; // Gizmo axis translation
+                    hasUnsavedChanges = true; // Flag that a continuous translation is occurring
+                    continue; 
                 }
 
                 if (draggingPoints) {
+                    hasUnsavedChanges = true; // Flag that a continuous translation is occurring
                     // Free translation using camera projection planes
                     float unitsPerPixel = (camera->Distance * 0.8284f) / (float)h;
                     glm::vec3 moveDelta = camera->Right * ((float)e.motion.xrel * unitsPerPixel) 
@@ -251,22 +307,33 @@ void App::processEvents() {
         
         if(e.type == SDL_KEYDOWN) {
             const Uint8* kState = SDL_GetKeyboardState(NULL);
+            bool ctrl = kState[SDL_SCANCODE_LCTRL] || kState[SDL_SCANCODE_RCTRL];
             
             if(e.key.keysym.sym == SDLK_p) pointMode = !pointMode;
             
             if(e.key.keysym.sym == SDLK_t) toolbar->currentTool = ToolMode::MOVE;
             if(e.key.keysym.sym == SDLK_r) toolbar->currentTool = ToolMode::ROTATE;
             if(e.key.keysym.sym == SDLK_e) toolbar->currentTool = ToolMode::SCALE;
-            if(e.key.keysym.sym == SDLK_q) toolbar->currentTool = ToolMode::SPLIT;
             
             if(e.key.keysym.sym == SDLK_s) {
                 glm::vec3 avg(0); int c = 0;
                 for(auto& pt : modelPoints) if(pt.selected) { avg += pt.position; c++; }
-                if(c > 1) { avg /= (float)c; for(auto& pt : modelPoints) if(pt.selected) pt.position = avg; }
+                if(c > 1) { 
+                    avg /= (float)c; 
+                    for(auto& pt : modelPoints) if(pt.selected) pt.position = avg; 
+                    saveState(); // Snapshot point merge
+                }
+            }
+            
+            // --- Undo / Redo Keybinds ---
+            if (ctrl && e.key.keysym.sym == SDLK_z && e.key.repeat == 0) {
+                undo();
+            } else if (ctrl && e.key.keysym.sym == SDLK_y && e.key.repeat == 0) {
+                redo();
             }
             
             // --- Smoothed Parametric Snapping Logic (Robust) ---
-            if(e.key.keysym.sym == SDLK_z && e.key.repeat == 0) {
+            if(!ctrl && e.key.keysym.sym == SDLK_z && e.key.repeat == 0) {
                 targetYaw = std::round(camera->Yaw / 90.0f) * 90.0f;
                 targetPitch = std::round(camera->Pitch / 90.0f) * 90.0f;
                 isAnimatingCamera = true;
@@ -442,4 +509,4 @@ void App::cleanup() {
     if(glContext) { SDL_GL_DeleteContext(glContext); glContext = nullptr; }
     if(window) { SDL_DestroyWindow(window); window = nullptr; }
     SDL_Quit();
-}
+}   

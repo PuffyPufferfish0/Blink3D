@@ -40,7 +40,16 @@ private:
     glm::vec2 selStart, selEnd;
     float targetYaw, targetPitch;
 
+    // Undo/Redo State
+    std::vector<std::vector<Point>> history;
+    int historyIndex;
+    bool hasUnsavedChanges;
+
     // Helper Methods
+    void saveState();
+    void undo();
+    void redo();
+
     void processEvents();
     void update();
     void buildUI();
