@@ -26,7 +26,7 @@ nix develop
 ```
 
 _run make command given from dev output_
-###### OR
+**OR**
 `make`
 
 
