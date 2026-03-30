@@ -22,6 +22,8 @@ void Toolbar::draw(int winH) {
     DrawToolButton("Rotate\n(R)", ToolMode::ROTATE);
     ImGui::Dummy(ImVec2(0, 10)); 
     DrawToolButton("Scale\n(E)", ToolMode::SCALE);
+    ImGui::Dummy(ImVec2(0,10));
+    DrawToolButton("split\n(q)", ToolMode::SPLIT);
 
     ImGui::End();
 }

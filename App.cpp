@@ -257,6 +257,7 @@ void App::processEvents() {
             if(e.key.keysym.sym == SDLK_t) toolbar->currentTool = ToolMode::MOVE;
             if(e.key.keysym.sym == SDLK_r) toolbar->currentTool = ToolMode::ROTATE;
             if(e.key.keysym.sym == SDLK_e) toolbar->currentTool = ToolMode::SCALE;
+            if(e.key.keysym.sym == SDLK_q) toolbar->currentTool = ToolMode::SPLIT;
             
             if(e.key.keysym.sym == SDLK_s) {
                 glm::vec3 avg(0); int c = 0;

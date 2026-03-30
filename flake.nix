@@ -27,12 +27,24 @@
           shellHook = ''
             echo "Blink3D Nix Environment Loaded!"
             echo "---------------------------------------------------------"
-            echo "To compile with the new class system, use this command:"
+            echo "To compile use this command:"
             echo "g++ main.cpp App.cpp glad.c Point.cpp Camera.cpp Mesh.cpp ViewCube.cpp Toolbar.cpp TransformGizmo.cpp imgui/*.cpp -I./include -I./imgui -I. \$(pkg-config --cflags sdl2) -o Blink3D -lSDL2 -ldl"
+echo " "
+echo "OR"
+echo " "
+echo "make"
             echo "---------------------------------------------------------"
             echo "To connect to your Linux GPU, run:"
+		echo " " 
             echo "nix run --impure github:nix-community/nixGL -- ./Blink3D"
-          '';
+          echo " " 
+	echo " must reload fish if you are using it, or set fish as main shell in this flake with"
+	echo "chsh -s $(which fish)"
+echo "reboot"
+echo " " 
+echo " "
+echo " "
+	  '';
         };
       });
     };

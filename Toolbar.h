@@ -4,7 +4,8 @@
 enum class ToolMode { 
     MOVE, 
     ROTATE, 
-    SCALE 
+    SCALE,
+    SPLIT
 };
 
 class Toolbar {
