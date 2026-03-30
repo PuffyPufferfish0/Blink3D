@@ -15,6 +15,7 @@ run after make
 ```
 
 as of right now, it is HIGHLY recommended to use NIX because I'm not updating that build as often as the NIX build
+
 ### Nix compatible!
 make sure you have nix installed 
 ```
@@ -25,6 +26,8 @@ nix develop
 ```
 
 _run make command given from dev output_
+###### OR
+`make`
 
 
 
