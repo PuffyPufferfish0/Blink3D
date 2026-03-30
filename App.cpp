@@ -11,58 +11,36 @@ const int WINDOW_WIDTH = 1280;
 const int WINDOW_HEIGHT = 720;
 
 App::App() : window(nullptr), glContext(nullptr), shaderProg(0), 
-             camera(nullptr), viewCube(nullptr), myMesh(nullptr), grid(nullptr),
+             camera(nullptr), viewCube(nullptr), toolbar(nullptr), gizmo(nullptr),
+             myMesh(nullptr), grid(nullptr),
              isRunning(true), leftDown(false), midDown(false), ctrlHeld(false), 
-             zHeld(false), draggingPoints(false), isAnimatingCamera(false),
+             isAnimatingCamera(false), draggingPoints(false),
              showGrid(true), pointMode(true), selStart(0), selEnd(0),
              targetYaw(-90.0f), targetPitch(0.0f) {}
 
 App::~App() { cleanup(); }
 
 bool App::init() {
-    if (SDL_Init(SDL_INIT_VIDEO) < 0) {
-        std::cerr << "SDL_Init failed: " << SDL_GetError() << std::endl;
-        return false;
-    }
+    if (SDL_Init(SDL_INIT_VIDEO) < 0) return false;
 
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3);
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 3);
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
     SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
-    // Let SDL automatically choose the best depth buffer for your driver
-    // SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE, 24); 
 
     window = SDL_CreateWindow("Blink3D Engine", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, WINDOW_WIDTH, WINDOW_HEIGHT, SDL_WINDOW_OPENGL | SDL_WINDOW_SHOWN | SDL_WINDOW_RESIZABLE);
-    if (!window) {
-        std::cerr << "SDL_CreateWindow failed: " << SDL_GetError() << std::endl;
-        return false;
-    }
+    if (!window) return false;
 
     glContext = SDL_GL_CreateContext(window);
-    if (!glContext) {
-        std::cerr << "SDL_GL_CreateContext failed: " << SDL_GetError() << std::endl;
-        return false;
-    }
+    if (!glContext) return false;
 
-    if (!gladLoadGLLoader((GLADloadproc)SDL_GL_GetProcAddress)) {
-        std::cerr << "Failed to initialize GLAD" << std::endl;
-        return false;
-    }
+    if (!gladLoadGLLoader((GLADloadproc)SDL_GL_GetProcAddress)) return false;
 
     IMGUI_CHECKVERSION();
     ImGui::CreateContext();
     ImGui::StyleColorsDark();
-    
-    if (!ImGui_ImplSDL2_InitForOpenGL(window, glContext)) {
-        std::cerr << "ImGui_ImplSDL2_InitForOpenGL failed!" << std::endl;
-        return false;
-    }
-    
-    // Pass nullptr instead of "#version 330 core" to let ImGui auto-detect the best shader version for your Linux driver
-    if (!ImGui_ImplOpenGL3_Init(nullptr)) {
-        std::cerr << "ImGui_ImplOpenGL3_Init failed! Your driver may reject the shader." << std::endl;
-        return false;
-    }
+    ImGui_ImplSDL2_InitForOpenGL(window, glContext);
+    ImGui_ImplOpenGL3_Init(nullptr);
 
     initShaders();
     initGeometry();
@@ -70,6 +48,10 @@ bool App::init() {
     camera = new Camera(glm::vec3(0,0,0), 5.0f);
     viewCube = new ViewCube();
     viewCube->init();
+    
+    toolbar = new Toolbar();
+    gizmo = new TransformGizmo();
+    gizmo->init();
 
     glEnable(GL_DEPTH_TEST);
     glEnable(GL_PROGRAM_POINT_SIZE);
@@ -113,24 +95,17 @@ void App::initShaders() {
 
 void App::initGeometry() {
     modelPoints.clear();
-    // Front face
-    modelPoints.push_back(Point(glm::vec3(-0.5, -0.5,  0.5))); // 0
-    modelPoints.push_back(Point(glm::vec3( 0.5, -0.5,  0.5))); // 1
-    modelPoints.push_back(Point(glm::vec3( 0.5,  0.5,  0.5))); // 2
-    modelPoints.push_back(Point(glm::vec3(-0.5,  0.5,  0.5))); // 3
-    // Back face
-    modelPoints.push_back(Point(glm::vec3(-0.5, -0.5, -0.5))); // 4
-    modelPoints.push_back(Point(glm::vec3( 0.5, -0.5, -0.5))); // 5
-    modelPoints.push_back(Point(glm::vec3( 0.5,  0.5, -0.5))); // 6
-    modelPoints.push_back(Point(glm::vec3(-0.5,  0.5, -0.5))); // 7
+    modelPoints.push_back(Point(glm::vec3(-0.5, -0.5,  0.5))); 
+    modelPoints.push_back(Point(glm::vec3( 0.5, -0.5,  0.5))); 
+    modelPoints.push_back(Point(glm::vec3( 0.5,  0.5,  0.5))); 
+    modelPoints.push_back(Point(glm::vec3(-0.5,  0.5,  0.5))); 
+    modelPoints.push_back(Point(glm::vec3(-0.5, -0.5, -0.5))); 
+    modelPoints.push_back(Point(glm::vec3( 0.5, -0.5, -0.5))); 
+    modelPoints.push_back(Point(glm::vec3( 0.5,  0.5, -0.5))); 
+    modelPoints.push_back(Point(glm::vec3(-0.5,  0.5, -0.5))); 
 
     std::vector<unsigned int> indices = {
-        0,1,2, 2,3,0, // Front
-        1,5,6, 6,2,1, // Right
-        7,6,5, 5,4,7, // Back
-        4,0,3, 3,7,4, // Left
-        3,2,6, 6,7,3, // Top
-        4,5,1, 1,0,4  // Bottom
+        0,1,2, 2,3,0, 1,5,6, 6,2,1, 7,6,5, 5,4,7, 4,0,3, 3,7,4, 3,2,6, 6,7,3, 4,5,1, 1,0,4 
     };
 
     std::vector<Vertex> verts;
@@ -164,12 +139,19 @@ void App::processEvents() {
                 }
                 if(e.button.button == SDL_BUTTON_LEFT) { 
                     int w, h; SDL_GetWindowSize(window, &w, &h);
+                    if (h == 0) h = 1;
+                    
                     if (viewCube->handleMousePress(e.button.x, e.button.y, w)) continue; 
 
+                    // 1. Try passing the click to the Gizmo first!
+                    if (toolbar->currentTool == ToolMode::MOVE && gizmo->handleMousePress(e.button.x, e.button.y, camera, w, h)) {
+                        continue; // The gizmo was clicked, skip regular selection
+                    }
+
+                    // 2. Gizmo wasn't clicked, handle point selection as normal
                     selStart = glm::vec2(e.button.x, e.button.y); 
                     selEnd = selStart; 
 
-                    if (h == 0) h = 1;
                     glm::mat4 v = camera->GetViewMatrix(), p_mat = glm::perspective(glm::radians(45.0f), (float)w/h, 0.1f, 100.0f);
                     
                     int best = -1; float d_min = 40.0f; 
@@ -186,10 +168,10 @@ void App::processEvents() {
                         if (!modelPoints[best].selected) {
                             if (!ctrl) for(auto& p : modelPoints) p.deselect();
                             modelPoints[best].select();
-                            draggingPoints = true;
+                            draggingPoints = true; // Enable free drag
                         } else {
                             if (ctrl) modelPoints[best].deselect();
-                            else draggingPoints = true;
+                            else draggingPoints = true; // Grab already selected points
                         }
                     } else {
                         leftDown = true; 
@@ -204,8 +186,9 @@ void App::processEvents() {
                 }
                 if(e.button.button == SDL_BUTTON_LEFT) {
                     if (viewCube->handleMouseRelease()) continue; 
-
-                    if (draggingPoints) draggingPoints = false;
+                    if (gizmo->handleMouseRelease()) continue; 
+                    
+                    if (draggingPoints) draggingPoints = false; // Drop free-dragged points
                     
                     if (leftDown) {
                         leftDown = false;
@@ -236,6 +219,23 @@ void App::processEvents() {
                     targetPitch = camera->Pitch;
                     continue;
                 }
+                
+                int w, h; SDL_GetWindowSize(window, &w, &h);
+                if (h == 0) h = 1;
+                
+                if (gizmo->handleMouseMotion(e.motion.xrel, e.motion.yrel, camera, w, h, modelPoints)) {
+                    continue; // Gizmo axis translation
+                }
+
+                if (draggingPoints) {
+                    // Free translation using camera projection planes
+                    float unitsPerPixel = (camera->Distance * 0.8284f) / (float)h;
+                    glm::vec3 moveDelta = camera->Right * ((float)e.motion.xrel * unitsPerPixel) 
+                                        - camera->Up    * ((float)e.motion.yrel * unitsPerPixel);
+                    for(auto& p : modelPoints) {
+                        if(p.selected) p.position += moveDelta;
+                    }
+                }
 
                 if(midDown) {
                     isAnimatingCamera = false;
@@ -246,52 +246,47 @@ void App::processEvents() {
                     targetPitch = camera->Pitch;
                 }
                 if(leftDown) selEnd = glm::vec2(e.motion.x, e.motion.y);
-                
-                if(draggingPoints) {
-                    int w, h; SDL_GetWindowSize(window, &w, &h);
-                    if (h == 0) h = 1;
-                    float unitsPerPixel = (camera->Distance * 0.8284f) / (float)h;
-                    glm::vec3 moveDelta = camera->Right * ((float)e.motion.xrel * unitsPerPixel) 
-                                        - camera->Up    * ((float)e.motion.yrel * unitsPerPixel);
-                    for(auto& p : modelPoints) {
-                        if(p.selected) p.position += moveDelta;
-                    }
-                }
             }
         }
         
         if(e.type == SDL_KEYDOWN) {
+            const Uint8* kState = SDL_GetKeyboardState(NULL);
+            
             if(e.key.keysym.sym == SDLK_p) pointMode = !pointMode;
+            
+            if(e.key.keysym.sym == SDLK_t) toolbar->currentTool = ToolMode::MOVE;
+            if(e.key.keysym.sym == SDLK_r) toolbar->currentTool = ToolMode::ROTATE;
+            if(e.key.keysym.sym == SDLK_e) toolbar->currentTool = ToolMode::SCALE;
+            
             if(e.key.keysym.sym == SDLK_s) {
                 glm::vec3 avg(0); int c = 0;
                 for(auto& pt : modelPoints) if(pt.selected) { avg += pt.position; c++; }
                 if(c > 1) { avg /= (float)c; for(auto& pt : modelPoints) if(pt.selected) pt.position = avg; }
             }
             
-            // --- Smoothed Parametric Snapping Logic ---
+            // --- Smoothed Parametric Snapping Logic (Robust) ---
             if(e.key.keysym.sym == SDLK_z && e.key.repeat == 0) {
-                zHeld = true;
                 targetYaw = std::round(camera->Yaw / 90.0f) * 90.0f;
-                if (camera->Pitch > 45.0f) targetPitch = 89.0f;
-                else if (camera->Pitch < -45.0f) targetPitch = -89.0f;
-                else targetPitch = 0.0f;
-                
+                targetPitch = std::round(camera->Pitch / 90.0f) * 90.0f;
                 isAnimatingCamera = true;
             }
             
-            if(zHeld && e.key.repeat == 0) {
-                if(e.key.keysym.sym == SDLK_UP) { targetPitch += 89.0f; isAnimatingCamera = true; }
-                if(e.key.keysym.sym == SDLK_DOWN) { targetPitch -= 89.0f; isAnimatingCamera = true; }
+            // Check true OS state for 'Z' key to allow smooth holding/tapping
+            if(kState[SDL_SCANCODE_Z] && e.key.repeat == 0) {
+                if(e.key.keysym.sym == SDLK_UP) { targetPitch += 90.0f; isAnimatingCamera = true; }
+                if(e.key.keysym.sym == SDLK_DOWN) { targetPitch -= 90.0f; isAnimatingCamera = true; }
                 if(e.key.keysym.sym == SDLK_LEFT) { targetYaw -= 90.0f; isAnimatingCamera = true; }
                 if(e.key.keysym.sym == SDLK_RIGHT) { targetYaw += 90.0f; isAnimatingCamera = true; }
                 
-                if (targetPitch > 89.0f) targetPitch = 89.0f;
-                if (targetPitch < -89.0f) targetPitch = -89.0f;
+                // Euler wrap-around to allow infinite vertical looping!
+                if (targetPitch > 90.1f) {
+                    targetPitch -= 180.0f;
+                    targetYaw += 180.0f;
+                } else if (targetPitch < -90.1f) {
+                    targetPitch += 180.0f;
+                    targetYaw += 180.0f;
+                }
             }
-        }
-        
-        if(e.type == SDL_KEYUP) {
-            if(e.key.keysym.sym == SDLK_z) zHeld = false;
         }
     }
 }
@@ -313,13 +308,20 @@ void App::run() {
 void App::update() {
     if (isAnimatingCamera) {
         float lerpSpeed = 0.15f; 
+        
+        // Camera clamps pitch internally to 89.0 to prevent gimbal lock.
+        // We calculate the effective visual target so the animation knows when to stop.
+        float effectiveTargetPitch = targetPitch;
+        if (effectiveTargetPitch > 89.0f) effectiveTargetPitch = 89.0f;
+        if (effectiveTargetPitch < -89.0f) effectiveTargetPitch = -89.0f;
+
         float newYaw = camera->Yaw + (targetYaw - camera->Yaw) * lerpSpeed;
-        float newPitch = camera->Pitch + (targetPitch - camera->Pitch) * lerpSpeed;
+        float newPitch = camera->Pitch + (effectiveTargetPitch - camera->Pitch) * lerpSpeed;
         
         camera->SetRotation(newYaw, newPitch);
 
-        if (std::abs(targetYaw - camera->Yaw) < 0.1f && std::abs(targetPitch - camera->Pitch) < 0.1f) {
-            camera->SetRotation(targetYaw, targetPitch);
+        if (std::abs(targetYaw - camera->Yaw) < 0.1f && std::abs(effectiveTargetPitch - camera->Pitch) < 0.1f) {
+            camera->SetRotation(targetYaw, effectiveTargetPitch);
             isAnimatingCamera = false;
         }
     }
@@ -329,6 +331,9 @@ void App::update() {
         myMesh->vertices[i].Color = modelPoints[i].color;
     }
     myMesh->updateGPUData();
+    
+    // Refresh Gizmo's position based on points
+    gizmo->updateState(modelPoints);
 }
 
 void App::buildUI() {
@@ -349,6 +354,10 @@ void App::buildUI() {
         ImGui::GetForegroundDrawList()->AddRect(ImVec2(selStart.x, selStart.y), ImVec2(selEnd.x, selEnd.y), IM_COL32(255, 255, 0, 255), 0, 0, 1.5f);
         ImGui::GetForegroundDrawList()->AddRectFilled(ImVec2(selStart.x, selStart.y), ImVec2(selEnd.x, selEnd.y), IM_COL32(255, 255, 0, 40));
     }
+    
+    // Draw the new Toolbar Class
+    int winH; SDL_GetWindowSize(window, nullptr, &winH);
+    toolbar->draw(winH);
 }
 
 void App::render() {
@@ -401,6 +410,11 @@ void App::render() {
         glEnable(GL_DEPTH_TEST);
     }
 
+    // Draw the Compass Gizmo OVER the object if Move Tool is selected
+    if (toolbar->currentTool == ToolMode::MOVE) {
+        gizmo->draw(camera, winW, winH, shaderProg);
+    }
+
     viewCube->draw(camera, winW, winH, drawW, drawH, shaderProg);
 
     ImGui::Render(); 
@@ -412,7 +426,6 @@ void App::render() {
 void App::cleanup() {
     // 1. Check if ImGui was successfully established
     if (ImGui::GetCurrentContext()) {
-        // 2. Safeguard: Only shut down backends if they were actually initialized!
         if (ImGui::GetIO().BackendRendererUserData != nullptr) {
             ImGui_ImplOpenGL3_Shutdown();
         }
@@ -421,6 +434,9 @@ void App::cleanup() {
         }
         ImGui::DestroyContext();
     }
+    
+    delete toolbar;
+    delete gizmo;
     
     if(glContext) { SDL_GL_DeleteContext(glContext); glContext = nullptr; }
     if(window) { SDL_DestroyWindow(window); window = nullptr; }

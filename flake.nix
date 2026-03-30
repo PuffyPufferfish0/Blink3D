@@ -25,8 +25,12 @@
           ];
 
           shellHook = ''
-            echo " Blink3D Development Environment Loaded!"
-            echo " To connect to your Linux Mint GPU, run:"
+            echo "Blink3D Nix Environment Loaded!"
+            echo "---------------------------------------------------------"
+            echo "To compile with the new class system, use this command:"
+            echo "g++ main.cpp App.cpp glad.c Point.cpp Camera.cpp Mesh.cpp ViewCube.cpp Toolbar.cpp TransformGizmo.cpp imgui/*.cpp -I./include -I./imgui -I. \$(pkg-config --cflags sdl2) -o Blink3D -lSDL2 -ldl"
+            echo "---------------------------------------------------------"
+            echo "To connect to your Linux GPU, run:"
             echo "nix run --impure github:nix-community/nixGL -- ./Blink3D"
           '';
         };
