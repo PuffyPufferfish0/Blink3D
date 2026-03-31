@@ -14,4 +14,4 @@
 - GUI work
 - face and lines
 - snap-to
-![gif1] (pictures/parametric_split_move(2).gif)
+![gif1](pictures/parametric_split_move(2).gif)
