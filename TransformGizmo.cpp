@@ -14,11 +14,9 @@ TransformGizmo::~TransformGizmo() {
 
 std::vector<Vertex> TransformGizmo::buildAxisLine(glm::vec3 dir, glm::vec3 color) {
     std::vector<Vertex> v;
-    // Main Shaft
     v.push_back({{0,0,0}, color});
     v.push_back({dir * 0.8f, color});
     
-    // Simple Arrowhead
     glm::vec3 up = glm::vec3(0,1,0);
     if (glm::abs(glm::dot(dir, up)) > 0.99f) up = glm::vec3(1,0,0);
     
@@ -33,37 +31,34 @@ std::vector<Vertex> TransformGizmo::buildAxisLine(glm::vec3 dir, glm::vec3 color
 }
 
 void TransformGizmo::init() {
-    // Red, Green, Blue matching standard 3D software
     gizmoMeshX = new Mesh(buildAxisLine({1,0,0}, {1,0,0}), GL_LINES);
     gizmoMeshY = new Mesh(buildAxisLine({0,1,0}, {0,1,0}), GL_LINES);
     gizmoMeshZ = new Mesh(buildAxisLine({0,0,1}, {0,0,1}), GL_LINES);
 }
 
-void TransformGizmo::updateState(const std::vector<Point>& points, const std::vector<Line>& lines) {
+void TransformGizmo::updateState(const std::vector<Point>& points, const std::vector<Line>& lines, const std::vector<Face>& faces) {
     glm::vec3 avg(0.0f);
     int count = 0;
     
-    // Build a unified map of which physical vertices are selected via points OR via lines
     std::vector<bool> moveFlag(points.size(), false);
     for (size_t i = 0; i < points.size(); i++) if (points[i].selected) moveFlag[i] = true;
     for (const auto& l : lines) if (l.selected) { moveFlag[l.v1] = true; moveFlag[l.v2] = true; }
+    for (const auto& f : faces) if (f.selected) { moveFlag[f.v1] = true; moveFlag[f.v2] = true; moveFlag[f.v3] = true; }
 
     for (size_t i = 0; i < points.size(); i++) {
         if (moveFlag[i]) { avg += points[i].position; count++; }
     }
     
     isVisible = (count > 0);
-    // Position Gizmo in the dead center of the active selection geometry
     if (isVisible) position = avg / (float)count; 
 }
 
 void TransformGizmo::draw(Camera* cam, int winW, int winH, unsigned int shader) {
     if (!isVisible) return;
     
-    // Clear depth buffer locally so arrows draw ON TOP of the model
     glClear(GL_DEPTH_BUFFER_BIT); 
 
-    float scale = cam->Distance * 0.15f; // Maintain consistent screen size
+    float scale = cam->Distance * 0.15f; 
     glm::mat4 model = glm::translate(glm::mat4(1.0f), position);
     model = glm::scale(model, glm::vec3(scale));
 
@@ -72,7 +67,6 @@ void TransformGizmo::draw(Camera* cam, int winW, int winH, unsigned int shader) 
     glUniform1i(glGetUniformLocation(shader, "isPoint"), false);
     glUniform1i(glGetUniformLocation(shader, "overrideColor"), true);
 
-    // Turn selected axis Yellow, keep others original color
     glUniform3f(glGetUniformLocation(shader, "colorVec"), activeAxis == X ? 1.0f : 0.9f, activeAxis == X ? 1.0f : 0.1f, 0.1f);
     gizmoMeshX->Draw();
     
@@ -115,7 +109,7 @@ bool TransformGizmo::handleMousePress(int mouseX, int mouseY, Camera* cam, int w
     float dY = distToSegment(m, o2D, y2D);
     float dZ = distToSegment(m, o2D, z2D);
 
-    float minDist = 20.0f; // Snapping radius for clicking lines
+    float minDist = 20.0f; 
     activeAxis = NONE;
 
     if (dX < minDist) { activeAxis = X; minDist = dX; }
@@ -124,7 +118,7 @@ bool TransformGizmo::handleMousePress(int mouseX, int mouseY, Camera* cam, int w
 
     if (activeAxis != NONE) {
         isDragging = true;
-        return true; // We intercepted the click
+        return true; 
     }
     return false;
 }
@@ -138,7 +132,7 @@ bool TransformGizmo::handleMouseRelease() {
     return false;
 }
 
-bool TransformGizmo::handleMouseMotion(int xrel, int yrel, Camera* cam, int winW, int winH, std::vector<Point>& points, const std::vector<Line>& lines) {
+bool TransformGizmo::handleMouseMotion(int xrel, int yrel, Camera* cam, int winW, int winH, std::vector<Point>& points, const std::vector<Line>& lines, const std::vector<Face>& faces) {
     if (!isDragging || activeAxis == NONE) return false;
 
     glm::mat4 v = cam->GetViewMatrix();
@@ -164,20 +158,18 @@ bool TransformGizmo::handleMouseMotion(int xrel, int yrel, Camera* cam, int winW
     float lenSq = glm::dot(axis2D, axis2D);
     if (lenSq > 0.0001f) {
         glm::vec2 mouseDelta(xrel, yrel);
-        
-        // Project 2D mouse movement onto the 2D axis line to find world-space translation
         float moveAmount = glm::dot(mouseDelta, axis2D) / lenSq;
         float trueAmount = moveAmount * scale;
         
-        // Gather ALL points that belong to the active selection (Points + Lines)
         std::vector<bool> moveFlag(points.size(), false);
         for (size_t i = 0; i < points.size(); i++) if (points[i].selected) moveFlag[i] = true;
         for (const auto& l : lines) if (l.selected) { moveFlag[l.v1] = true; moveFlag[l.v2] = true; }
+        for (const auto& f : faces) if (f.selected) { moveFlag[f.v1] = true; moveFlag[f.v2] = true; moveFlag[f.v3] = true; }
         
         for (size_t i = 0; i < points.size(); i++) {
             if (moveFlag[i]) points[i].position += dir * trueAmount;
         }
         position += dir * trueAmount; 
     }
-    return true; // We absorbed the mouse movement
+    return true; 
 }

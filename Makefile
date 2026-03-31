@@ -6,8 +6,8 @@ CXX = g++
 CXXFLAGS = -I./include -I./imgui -I. $(shell pkg-config --cflags sdl2)
 LDFLAGS = -lSDL2 -ldl
 
-# Added Line.cpp and SplitTool.cpp
-SOURCES = main.cpp App.cpp glad.c Point.cpp Camera.cpp Mesh.cpp ViewCube.cpp Toolbar.cpp TransformGizmo.cpp Line.cpp SplitTool.cpp imgui/*.cpp
+# Added Face.cpp to SOURCES
+SOURCES = main.cpp App.cpp glad.c Point.cpp Camera.cpp Mesh.cpp ViewCube.cpp Toolbar.cpp TransformGizmo.cpp Line.cpp Face.cpp SplitTool.cpp imgui/*.cpp
 
 # 'all' is the default target when you just type 'make'
 all: clean build

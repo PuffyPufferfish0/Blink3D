@@ -120,26 +120,26 @@ void App::initGeometry() {
     }
     grid = new Mesh(gv, GL_LINES);
 
-    // Initial extraction of the edges based on the triangles
-    extractLinesFromMesh();
+    extractTopologyFromMesh();
 
-    // Initialize the very first state in our history timeline
     history.clear();
     historyIndex = -1;
     saveState();
 }
 
-void App::extractLinesFromMesh() {
+void App::extractTopologyFromMesh() {
     modelLines.clear();
+    modelFaces.clear();
     for (size_t i = 0; i < myMesh->indices.size(); i += 3) {
         Line l1(myMesh->indices[i], myMesh->indices[i+1]);
         Line l2(myMesh->indices[i+1], myMesh->indices[i+2]);
         Line l3(myMesh->indices[i+2], myMesh->indices[i]);
         
-        // Only push unique edges to avoid drawing Z-fighting duplicates
         if (std::find(modelLines.begin(), modelLines.end(), l1) == modelLines.end()) modelLines.push_back(l1);
         if (std::find(modelLines.begin(), modelLines.end(), l2) == modelLines.end()) modelLines.push_back(l2);
         if (std::find(modelLines.begin(), modelLines.end(), l3) == modelLines.end()) modelLines.push_back(l3);
+
+        modelFaces.push_back(Face(myMesh->indices[i], myMesh->indices[i+1], myMesh->indices[i+2]));
     }
 }
 
@@ -147,7 +147,7 @@ void App::saveState() {
     if (historyIndex < (int)history.size() - 1) {
         history.erase(history.begin() + historyIndex + 1, history.end());
     }
-    history.push_back({modelPoints, myMesh->indices, modelLines});
+    history.push_back({modelPoints, myMesh->indices, modelLines, modelFaces});
     historyIndex++;
 }
 
@@ -156,6 +156,7 @@ void App::undo() {
         historyIndex--;
         modelPoints = history[historyIndex].points;
         modelLines = history[historyIndex].lines;
+        modelFaces = history[historyIndex].faces;
         
         std::vector<Vertex> verts;
         for(auto& p : modelPoints) verts.push_back({p.position, p.color});
@@ -166,7 +167,7 @@ void App::undo() {
         for (int i = 0; i < (int)modelPoints.size(); i++) {
             if (modelPoints[i].selected) selectedIndices.push_back(i);
         }
-        gizmo->updateState(modelPoints, modelLines);
+        gizmo->updateState(modelPoints, modelLines, modelFaces);
     }
 }
 
@@ -175,6 +176,7 @@ void App::redo() {
         historyIndex++;
         modelPoints = history[historyIndex].points;
         modelLines = history[historyIndex].lines;
+        modelFaces = history[historyIndex].faces;
         
         std::vector<Vertex> verts;
         for(auto& p : modelPoints) verts.push_back({p.position, p.color});
@@ -185,20 +187,31 @@ void App::redo() {
         for (int i = 0; i < (int)modelPoints.size(); i++) {
             if (modelPoints[i].selected) selectedIndices.push_back(i);
         }
-        gizmo->updateState(modelPoints, modelLines);
+        gizmo->updateState(modelPoints, modelLines, modelFaces);
     }
 }
 
 void App::processEvents() {
     SDL_Event e;
     
-    // Fast math helper for projecting lines into 2D screen space for clicking
     auto distToSegment = [](glm::vec2 p, glm::vec2 v, glm::vec2 w) {
         float l2 = glm::distance(v, w) * glm::distance(v, w);
         if (l2 == 0.0f) return glm::distance(p, v);
         float t = std::max(0.0f, std::min(1.0f, glm::dot(p - v, w - v) / l2));
         glm::vec2 projection = v + t * (w - v);
         return glm::distance(p, projection);
+    };
+
+    auto pointInTriangle = [](glm::vec2 pt, glm::vec2 v1, glm::vec2 v2, glm::vec2 v3) {
+        auto sign = [](glm::vec2 p1, glm::vec2 p2, glm::vec2 p3) {
+            return (p1.x - p3.x) * (p2.y - p3.y) - (p2.x - p3.x) * (p1.y - p3.y);
+        };
+        float d1 = sign(pt, v1, v2);
+        float d2 = sign(pt, v2, v3);
+        float d3 = sign(pt, v3, v1);
+        bool has_neg = (d1 < 0) || (d2 < 0) || (d3 < 0);
+        bool has_pos = (d1 > 0) || (d2 > 0) || (d3 > 0);
+        return !(has_neg && has_pos);
     };
     
     while(SDL_PollEvent(&e)) {
@@ -231,8 +244,43 @@ void App::processEvents() {
 
                     glm::mat4 v = camera->GetViewMatrix(), p_mat = glm::perspective(glm::radians(45.0f), (float)w/h, 0.1f, 100.0f);
                     
-                    if (toolbar->selectMode == SelectMode::LINE) {
-                        int best = -1; float d_min = 15.0f; // Click snapping threshold
+                    if (toolbar->selectMode == SelectMode::FACE) {
+                        int best = -1; float z_min = 1.0f; // Track depth to select front-most face
+                        for(int i=0; i<(int)modelFaces.size(); i++){
+                            glm::vec4 c1 = p_mat * v * glm::vec4(modelPoints[modelFaces[i].v1].position, 1.0f);
+                            glm::vec4 c2 = p_mat * v * glm::vec4(modelPoints[modelFaces[i].v2].position, 1.0f);
+                            glm::vec4 c3 = p_mat * v * glm::vec4(modelPoints[modelFaces[i].v3].position, 1.0f);
+                            if(c1.w > 0 && c2.w > 0 && c3.w > 0) {
+                                glm::vec2 s1((c1.x/c1.w+1)*0.5f*w, (1-c1.y/c1.w)*0.5f*h);
+                                glm::vec2 s2((c2.x/c2.w+1)*0.5f*w, (1-c2.y/c2.w)*0.5f*h);
+                                glm::vec2 s3((c3.x/c3.w+1)*0.5f*w, (1-c3.y/c3.w)*0.5f*h);
+                                if (pointInTriangle(selStart, s1, s2, s3)) {
+                                    float avgZ = (c1.z/c1.w + c2.z/c2.w + c3.z/c3.w) / 3.0f;
+                                    if (avgZ < z_min) { z_min = avgZ; best = i; }
+                                }
+                            }
+                        }
+
+                        if(best != -1) {
+                            if (!modelFaces[best].selected) {
+                                if (!ctrl) for(auto& f : modelFaces) f.deselect();
+                                modelFaces[best].select();
+                                saveState();
+                                draggingPoints = true;
+                            } else {
+                                if (ctrl) { modelFaces[best].deselect(); saveState(); }
+                                else draggingPoints = true;
+                            }
+                        } else {
+                            leftDown = true; 
+                            bool changed = false;
+                            if(!ctrl) {
+                                for(auto& f : modelFaces) { if (f.selected) changed = true; f.deselect(); }
+                            }
+                            if (changed) saveState(); 
+                        }
+                    } else if (toolbar->selectMode == SelectMode::LINE) {
+                        int best = -1; float d_min = 15.0f; 
                         for(int i=0; i<(int)modelLines.size(); i++){
                             glm::vec4 c1 = p_mat * v * glm::vec4(modelPoints[modelLines[i].v1].position, 1.0f);
                             glm::vec4 c2 = p_mat * v * glm::vec4(modelPoints[modelLines[i].v2].position, 1.0f);
@@ -348,6 +396,23 @@ void App::processEvents() {
                                         }
                                     }
                                 }
+                            } else if (toolbar->selectMode == SelectMode::FACE) {
+                                for(int i = 0; i < (int)modelFaces.size(); i++) {
+                                    auto& f_obj = modelFaces[i];
+                                    glm::vec4 c1 = p_mat * v * glm::vec4(modelPoints[f_obj.v1].position, 1.0f);
+                                    glm::vec4 c2 = p_mat * v * glm::vec4(modelPoints[f_obj.v2].position, 1.0f);
+                                    glm::vec4 c3 = p_mat * v * glm::vec4(modelPoints[f_obj.v3].position, 1.0f);
+                                    if(c1.w > 0 && c2.w > 0 && c3.w > 0) {
+                                        glm::vec2 s1((c1.x/c1.w+1)*0.5f*w, (1-c1.y/c1.w)*0.5f*h);
+                                        glm::vec2 s2((c2.x/c2.w+1)*0.5f*w, (1-c2.y/c2.w)*0.5f*h);
+                                        glm::vec2 s3((c3.x/c3.w+1)*0.5f*w, (1-c3.y/c3.w)*0.5f*h);
+                                        if(s1.x >= x1 && s1.x <= x2 && s1.y >= y1 && s1.y <= y2 &&
+                                           s2.x >= x1 && s2.x <= x2 && s2.y >= y1 && s2.y <= y2 &&
+                                           s3.x >= x1 && s3.x <= x2 && s3.y >= y1 && s3.y <= y2) {
+                                            if (!f_obj.selected) { changed = true; f_obj.select(); }
+                                        }
+                                    }
+                                }
                             }
                             if (changed) saveState(); 
                         }
@@ -366,7 +431,7 @@ void App::processEvents() {
                 int w, h; SDL_GetWindowSize(window, &w, &h);
                 if (h == 0) h = 1;
                 
-                if (gizmo->handleMouseMotion(e.motion.xrel, e.motion.yrel, camera, w, h, modelPoints, modelLines)) {
+                if (gizmo->handleMouseMotion(e.motion.xrel, e.motion.yrel, camera, w, h, modelPoints, modelLines, modelFaces)) {
                     hasUnsavedChanges = true; 
                     continue; 
                 }
@@ -380,6 +445,7 @@ void App::processEvents() {
                     std::vector<bool> moveFlag(modelPoints.size(), false);
                     for (size_t i = 0; i < modelPoints.size(); i++) if (modelPoints[i].selected) moveFlag[i] = true;
                     for (const auto& l : modelLines) if (l.selected) { moveFlag[l.v1] = true; moveFlag[l.v2] = true; }
+                    for (const auto& f : modelFaces) if (f.selected) { moveFlag[f.v1] = true; moveFlag[f.v2] = true; moveFlag[f.v3] = true; }
                     
                     for (size_t i = 0; i < modelPoints.size(); i++) {
                         if (moveFlag[i]) modelPoints[i].position += moveDelta;
@@ -396,7 +462,7 @@ void App::processEvents() {
                 }
                 if(leftDown) selEnd = glm::vec2(e.motion.x, e.motion.y);
             }
-        } // End Mouse/Input Capture branch
+        } 
         
         if(e.type == SDL_KEYDOWN) {
             const Uint8* kState = SDL_GetKeyboardState(NULL);
@@ -404,86 +470,74 @@ void App::processEvents() {
             
             if(e.key.keysym.sym == SDLK_p) pointMode = !pointMode;
             
-            // Interaction Mode Keyboard Shortcuts
             if(e.key.keysym.sym == SDLK_1) toolbar->selectMode = SelectMode::POINT;
             if(e.key.keysym.sym == SDLK_2) toolbar->selectMode = SelectMode::LINE;
+            if(e.key.keysym.sym == SDLK_3) toolbar->selectMode = SelectMode::FACE; // Face Mode Key
             
-            // Tool Keyboard Shortcuts
             if(e.key.keysym.sym == SDLK_t) toolbar->currentTool = ToolMode::MOVE;
             if(e.key.keysym.sym == SDLK_r) toolbar->currentTool = ToolMode::ROTATE;
             if(e.key.keysym.sym == SDLK_e) toolbar->currentTool = ToolMode::SCALE;
             
-            // SPLIT TOOL EXECUTION
             if(e.key.keysym.sym == SDLK_q) {
                 if (SplitTool::execute(modelPoints, myMesh->indices, modelLines)) {
-                    // Regenerate GPU Topology safely
                     std::vector<Vertex> verts;
                     for(auto& p : modelPoints) verts.push_back({p.position, p.color});
                     std::vector<unsigned int> newInds = myMesh->indices;
                     delete myMesh;
                     myMesh = new Mesh(verts, GL_TRIANGLES, newInds);
                     
-                    // Reset topology trackers safely
-                    extractLinesFromMesh();
+                    extractTopologyFromMesh();
                     for(auto& l : modelLines) l.deselect();
+                    for(auto& f : modelFaces) f.deselect();
                     for(auto& p : modelPoints) p.deselect();
                     selectedIndices.clear();
                     
-                    gizmo->updateState(modelPoints, modelLines);
+                    gizmo->updateState(modelPoints, modelLines, modelFaces);
                     saveState(); 
                 }
             }
             
             if(e.key.keysym.sym == SDLK_s) {
                 if(selectedIndices.size() >= 2) {
-                    // Ordered snapping: First point merges completely into the second point
                     int sourceIdx = selectedIndices[0];
                     int targetIdx = selectedIndices[1];
                     
-                    // 1. Remap mesh indices to point to the target instead of the source
                     for (size_t i = 0; i < myMesh->indices.size(); i++) {
                         if (myMesh->indices[i] == (unsigned int)sourceIdx) {
                             myMesh->indices[i] = targetIdx;
                         }
                     }
                     
-                    // 2. Erase the source point entirely from the model
                     modelPoints.erase(modelPoints.begin() + sourceIdx);
                     
-                    // 3. Shift all subsequent indices down by 1 to accommodate the deletion
                     for (size_t i = 0; i < myMesh->indices.size(); i++) {
                         if (myMesh->indices[i] > (unsigned int)sourceIdx) {
                             myMesh->indices[i]--;
                         }
                     }
                     
-                    // 4. Rebuild the mesh to upload the new topology to the GPU
                     std::vector<Vertex> verts;
                     for(auto& p : modelPoints) verts.push_back({p.position, p.color});
                     std::vector<unsigned int> newIndices = myMesh->indices;
                     delete myMesh;
                     myMesh = new Mesh(verts, GL_TRIANGLES, newIndices);
                     
-                    // 5. Clear selections so we don't hold invalid indexes
                     for(auto& pt : modelPoints) pt.deselect();
                     selectedIndices.clear();
                     
-                    // Re-extract lines for UI since topology changed
-                    extractLinesFromMesh();
-                    gizmo->updateState(modelPoints, modelLines);
+                    extractTopologyFromMesh();
+                    gizmo->updateState(modelPoints, modelLines, modelFaces);
                     
-                    saveState(); // Snapshot structural merge
+                    saveState(); 
                 }
             }
             
-            // --- Undo / Redo Keybinds ---
             if (ctrl && e.key.keysym.sym == SDLK_z && e.key.repeat == 0) {
                 undo();
             } else if (ctrl && e.key.keysym.sym == SDLK_y && e.key.repeat == 0) {
                 redo();
             }
             
-            // --- Smoothed Parametric Snapping Logic (Robust) ---
             if(!ctrl && e.key.keysym.sym == SDLK_z && e.key.repeat == 0) {
                 targetYaw = std::round(camera->Yaw / 90.0f) * 90.0f;
                 targetPitch = std::round(camera->Pitch / 90.0f) * 90.0f;
@@ -526,8 +580,6 @@ void App::update() {
     if (isAnimatingCamera) {
         float lerpSpeed = 0.15f; 
         
-        // Camera clamps pitch internally to 89.0 to prevent gimbal lock.
-        // We calculate the effective visual target so the animation knows when to stop.
         float effectiveTargetPitch = targetPitch;
         if (effectiveTargetPitch > 89.0f) effectiveTargetPitch = 89.0f;
         if (effectiveTargetPitch < -89.0f) effectiveTargetPitch = -89.0f;
@@ -549,8 +601,7 @@ void App::update() {
     }
     myMesh->updateGPUData();
     
-    // Refresh Gizmo's position based on unified points and lines
-    gizmo->updateState(modelPoints, modelLines);
+    gizmo->updateState(modelPoints, modelLines, modelFaces);
 }
 
 void App::buildUI() {
@@ -572,7 +623,6 @@ void App::buildUI() {
         ImGui::GetForegroundDrawList()->AddRectFilled(ImVec2(selStart.x, selStart.y), ImVec2(selEnd.x, selEnd.y), IM_COL32(255, 255, 0, 40));
     }
     
-    // Draw the new Toolbar Class
     int winH; SDL_GetWindowSize(window, nullptr, &winH);
     toolbar->draw(winH);
 }
@@ -615,7 +665,7 @@ void App::render() {
     glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
     glDisable(GL_POLYGON_OFFSET_LINE);
     
-    // Render HIGHLIGHTED Selection Lines in bright yellow!
+    // Draw highlighted lines
     std::vector<Vertex> selLineVerts;
     for (const auto& l : modelLines) {
         if (l.selected) {
@@ -635,13 +685,47 @@ void App::render() {
         glEnableVertexAttribArray(1);
         glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)offsetof(Vertex, Color));
         
-        glDisable(GL_DEPTH_TEST); // Draw over the mesh
+        glDisable(GL_DEPTH_TEST);
         glUseProgram(shaderProg);
         glUniform1i(glGetUniformLocation(shaderProg, "isPoint"), false);
         glUniform1i(glGetUniformLocation(shaderProg, "overrideColor"), false);
         glDrawArrays(GL_LINES, 0, selLineVerts.size());
         
         glEnable(GL_DEPTH_TEST);
+        glDeleteBuffers(1, &vbo);
+        glDeleteVertexArrays(1, &vao);
+    }
+    
+    // Draw Highlighted Faces
+    std::vector<Vertex> selFaceVerts;
+    for (const auto& f : modelFaces) {
+        if (f.selected) {
+            selFaceVerts.push_back({modelPoints[f.v1].position, glm::vec3(0.9f, 0.9f, 0.2f)});
+            selFaceVerts.push_back({modelPoints[f.v2].position, glm::vec3(0.9f, 0.9f, 0.2f)});
+            selFaceVerts.push_back({modelPoints[f.v3].position, glm::vec3(0.9f, 0.9f, 0.2f)});
+        }
+    }
+    if (!selFaceVerts.empty()) {
+        GLuint vao, vbo;
+        glGenVertexArrays(1, &vao);
+        glGenBuffers(1, &vbo);
+        glBindVertexArray(vao);
+        glBindBuffer(GL_ARRAY_BUFFER, vbo);
+        glBufferData(GL_ARRAY_BUFFER, selFaceVerts.size() * sizeof(Vertex), selFaceVerts.data(), GL_STATIC_DRAW);
+        glEnableVertexAttribArray(0);
+        glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)0);
+        glEnableVertexAttribArray(1);
+        glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)offsetof(Vertex, Color));
+        
+        glEnable(GL_POLYGON_OFFSET_FILL);
+        glPolygonOffset(-2.0f, -2.0f); // Offset to prevent z-fighting with gray mesh
+        
+        glUseProgram(shaderProg);
+        glUniform1i(glGetUniformLocation(shaderProg, "isPoint"), false);
+        glUniform1i(glGetUniformLocation(shaderProg, "overrideColor"), false);
+        glDrawArrays(GL_TRIANGLES, 0, selFaceVerts.size());
+        
+        glDisable(GL_POLYGON_OFFSET_FILL);
         glDeleteBuffers(1, &vbo);
         glDeleteVertexArrays(1, &vao);
     }
@@ -658,7 +742,6 @@ void App::render() {
         glEnable(GL_DEPTH_TEST);
     }
 
-    // Draw the Compass Gizmo OVER the object if Move Tool is selected
     if (toolbar->currentTool == ToolMode::MOVE) {
         gizmo->draw(camera, winW, winH, shaderProg);
     }
@@ -672,7 +755,6 @@ void App::render() {
 }
 
 void App::cleanup() {
-    // 1. Check if ImGui was successfully established
     if (ImGui::GetCurrentContext()) {
         if (ImGui::GetIO().BackendRendererUserData != nullptr) {
             ImGui_ImplOpenGL3_Shutdown();

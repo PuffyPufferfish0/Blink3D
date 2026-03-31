@@ -3,6 +3,7 @@
 #include "Camera.h"
 #include "Point.h"
 #include "Line.h"
+#include "Face.h" // Added Face
 #include <vector>
 #include <glm/glm.hpp>
 
@@ -18,12 +19,12 @@ public:
     ~TransformGizmo();
 
     void init();
-    void updateState(const std::vector<Point>& points, const std::vector<Line>& lines);
+    void updateState(const std::vector<Point>& points, const std::vector<Line>& lines, const std::vector<Face>& faces); // Added faces
     void draw(Camera* cam, int winW, int winH, unsigned int shader);
 
     bool handleMousePress(int mouseX, int mouseY, Camera* cam, int winW, int winH);
     bool handleMouseRelease();
-    bool handleMouseMotion(int xrel, int yrel, Camera* cam, int winW, int winH, std::vector<Point>& points, const std::vector<Line>& lines);
+    bool handleMouseMotion(int xrel, int yrel, Camera* cam, int winW, int winH, std::vector<Point>& points, const std::vector<Line>& lines, const std::vector<Face>& faces);
 
 private:
     Mesh* gizmoMeshX;
