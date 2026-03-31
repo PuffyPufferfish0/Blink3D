@@ -1,6 +1,7 @@
 #include "App.h"
 #include <iostream>
 #include <algorithm>
+#include <map>
 #include <glm/gtc/type_ptr.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 #include "imgui/imgui.h"
@@ -523,9 +524,10 @@ void App::processEvents() {
             const Uint8* kState = SDL_GetKeyboardState(NULL);
             bool ctrl = kState[SDL_SCANCODE_LCTRL] || kState[SDL_SCANCODE_RCTRL];
             
-            if(e.key.keysym.sym == SDLK_TAB) addMenu->isOpen = !addMenu->isOpen; // Toggle Add Menu
+            if(e.key.keysym.sym == SDLK_TAB) addMenu->isOpen = !addMenu->isOpen;
             if(e.key.keysym.sym == SDLK_p) pointMode = !pointMode;
-            if(e.key.keysym.sym == SDLK_g && !ctrl) showGrid = !showGrid; 
+            if(e.key.keysym.sym == SDLK_g && !ctrl) showGrid = !showGrid;
+            
             if(e.key.keysym.sym == SDLK_1) toolbar->selectMode = SelectMode::POINT;
             if(e.key.keysym.sym == SDLK_2) toolbar->selectMode = SelectMode::LINE;
             if(e.key.keysym.sym == SDLK_3) toolbar->selectMode = SelectMode::FACE; 
@@ -533,6 +535,78 @@ void App::processEvents() {
             if(e.key.keysym.sym == SDLK_t) toolbar->currentTool = ToolMode::MOVE;
             if(e.key.keysym.sym == SDLK_r) toolbar->currentTool = ToolMode::ROTATE;
             if(e.key.keysym.sym == SDLK_e) toolbar->currentTool = ToolMode::SCALE;
+            
+            // --- Copy / Paste Keybinds ---
+            if (ctrl && e.key.keysym.sym == SDLK_c && e.key.repeat == 0) {
+                // Map physical points that are currently active in any selection mode
+                std::vector<bool> copyFlag(modelPoints.size(), false);
+                for (size_t i = 0; i < modelPoints.size(); i++) if (modelPoints[i].selected) copyFlag[i] = true;
+                for (const auto& l : modelLines) if (l.selected) { copyFlag[l.v1] = true; copyFlag[l.v2] = true; }
+                for (const auto& f : modelFaces) if (f.selected) { copyFlag[f.v1] = true; copyFlag[f.v2] = true; copyFlag[f.v3] = true; }
+                
+                std::map<int, int> oldToNew;
+                clipboard.points.clear();
+                clipboard.indices.clear();
+                
+                // Copy selected Points into clipboard
+                for (size_t i = 0; i < modelPoints.size(); i++) {
+                    if (copyFlag[i]) {
+                        oldToNew[i] = clipboard.points.size();
+                        clipboard.points.push_back(modelPoints[i].position);
+                    }
+                }
+                
+                // Copy existing full Triangles (Faces) if all their vertices were copied
+                for (size_t i = 0; i < myMesh->indices.size(); i += 3) {
+                    int v1 = myMesh->indices[i];
+                    int v2 = myMesh->indices[i+1];
+                    int v3 = myMesh->indices[i+2];
+                    if (copyFlag[v1] && copyFlag[v2] && copyFlag[v3]) {
+                        clipboard.indices.push_back(oldToNew[v1]);
+                        clipboard.indices.push_back(oldToNew[v2]);
+                        clipboard.indices.push_back(oldToNew[v3]);
+                    }
+                }
+            } 
+            else if (ctrl && e.key.keysym.sym == SDLK_v && e.key.repeat == 0) {
+                if (!clipboard.points.empty()) {
+                    // Deselect everything in the scene to prepare for the new pasted object
+                    for(auto& p : modelPoints) p.deselect();
+                    for(auto& l : modelLines) l.deselect();
+                    for(auto& f : modelFaces) f.deselect();
+                    selectedIndices.clear();
+
+                    int startIdx = modelPoints.size();
+                    
+                    // Offset the pasted object based on camera view so it is slightly visible and doesn't clip
+                    glm::vec3 offset = camera->Right * 0.4f - camera->Up * 0.4f; 
+                    
+                    for (size_t i = 0; i < clipboard.points.size(); i++) {
+                        Point newPt(clipboard.points[i] + offset);
+                        newPt.select(); // Auto-select newly pasted geometry
+                        modelPoints.push_back(newPt);
+                        selectedIndices.push_back(startIdx + i);
+                    }
+                    
+                    std::vector<unsigned int> newMeshIndices = myMesh->indices;
+                    for (size_t i = 0; i < clipboard.indices.size(); i++) {
+                        newMeshIndices.push_back(clipboard.indices[i] + startIdx); // Wire up the copied faces
+                    }
+                    
+                    std::vector<Vertex> verts;
+                    for(auto& p : modelPoints) verts.push_back({p.position, p.color});
+                    delete myMesh;
+                    myMesh = new Mesh(verts, GL_TRIANGLES, newMeshIndices);
+                    
+                    extractTopologyFromMesh();
+                    
+                    // Force the UI into Point mode so they instantly get control of the Gizmo on the new object
+                    toolbar->selectMode = SelectMode::POINT;
+                    
+                    gizmo->updateState(modelPoints, modelLines, modelFaces);
+                    saveState(); 
+                }
+            }
             
             if(e.key.keysym.sym == SDLK_q) {
                 if (SplitTool::execute(modelPoints, myMesh->indices, modelLines)) {
@@ -653,7 +727,6 @@ void App::update() {
 
     for(int i=0; i<(int)modelPoints.size(); i++) {
         myMesh->vertices[i].Position = modelPoints[i].position;
-        // Inject configuration colors here! Overrides default point colors.
         myMesh->vertices[i].Color = modelPoints[i].selected ? config.selectedPointColor : config.unselectedPointColor;
     }
     myMesh->updateGPUData();
@@ -699,7 +772,7 @@ void App::buildUI() {
         const char* resOptions[] = { "800x600", "1280x720", "1920x1080", "2560x1440" };
         if (ImGui::Combo("Default Window Resolution", &config.windowResIndex, resOptions, IM_ARRAYSIZE(resOptions))) {
             applyWindowResolution();
-            saveConfig(); // Save instantly when changed
+            saveConfig(); 
         }
 
         ImGui::Dummy(ImVec2(0, 10));
@@ -709,7 +782,6 @@ void App::buildUI() {
         }
         ImGui::SameLine();
         if (ImGui::Button(".configSettings file export", ImVec2(220, 30))) {
-            // Future file-browser trigger goes here. For now, it forces a save to disk!
             saveConfig();
         }
 
@@ -721,26 +793,22 @@ void App::buildUI() {
         ImGui::GetForegroundDrawList()->AddRectFilled(ImVec2(selStart.x, selStart.y), ImVec2(selEnd.x, selEnd.y), IM_COL32(255, 255, 0, 40));
     }
     
-    // Process Add Menu actions
     if (addMenu->draw(modelPoints, myMesh->indices)) {
-        // A new shape was added! Rebuild the GPU buffers.
         std::vector<Vertex> verts;
         for(auto& p : modelPoints) verts.push_back({p.position, p.color});
         std::vector<unsigned int> newInds = myMesh->indices;
         delete myMesh;
         myMesh = new Mesh(verts, GL_TRIANGLES, newInds);
         
-        // Regenerate lines and faces from the new indices
         extractTopologyFromMesh();
         
-        // Deselect everything else so the user can easily select their new shape
         for(auto& p : modelPoints) p.deselect();
         for(auto& l : modelLines) l.deselect();
         for(auto& f : modelFaces) f.deselect();
         selectedIndices.clear();
         
         gizmo->updateState(modelPoints, modelLines, modelFaces);
-        saveState(); // Allow undoing the object creation
+        saveState(); 
     }
     
     int winH; SDL_GetWindowSize(window, nullptr, &winH);
@@ -754,7 +822,6 @@ void App::render() {
     if (winH == 0) winH = 1;
 
     glViewport(0, 0, drawW, drawH);
-    // Dynamic config background color
     glClearColor(config.bgColor.r, config.bgColor.g, config.bgColor.b, 1.0f);
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
@@ -772,7 +839,6 @@ void App::render() {
         grid->Draw();
     }
 
-    // Dynamic config unselected face color
     glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
     glUniform1i(glGetUniformLocation(shaderProg, "isPoint"), false);
     glUniform1i(glGetUniformLocation(shaderProg, "overrideColor"), true);
@@ -780,7 +846,6 @@ void App::render() {
     myMesh->drawMode = GL_TRIANGLES;
     myMesh->Draw();
 
-    // Dynamic config unselected line color
     glEnable(GL_POLYGON_OFFSET_LINE);
     glPolygonOffset(-1.0f, -1.0f);
     glLineWidth(config.lineThickness);
@@ -790,7 +855,6 @@ void App::render() {
     glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
     glDisable(GL_POLYGON_OFFSET_LINE);
     
-    // Dynamic config selected line color
     std::vector<Vertex> selLineVerts;
     for (const auto& l : modelLines) {
         if (l.selected) {
@@ -821,7 +885,6 @@ void App::render() {
         glDeleteVertexArrays(1, &vao);
     }
     
-    // Dynamic config selected face color
     std::vector<Vertex> selFaceVerts;
     for (const auto& f : modelFaces) {
         if (f.selected) {
