@@ -44,6 +44,14 @@ _run make command given from dev output_
 |**slide parametric**| **z + [arrow key]**|
 |**toggle point visability**|**p** |
 |**toggle grid visability**|**g**|
-|**snap points  **|**select point, s**|
+|**snap points**|**select point, s**|
 |**swtich target mode**|**1,2,3**|
+|**add menu**|**tab**|
+
+
+### .configSettings file
+- you must have the .configSetting IN the Blink3D directory for it to read
+- make sure to export it from preferences menu
+
+
 
