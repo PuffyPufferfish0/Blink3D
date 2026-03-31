@@ -8,7 +8,7 @@
 #include "imgui/imgui_impl_opengl3.h"
 
 App::App() : window(nullptr), glContext(nullptr), shaderProg(0), 
-             camera(nullptr), viewCube(nullptr), toolbar(nullptr), gizmo(nullptr),
+             camera(nullptr), viewCube(nullptr), toolbar(nullptr), gizmo(nullptr), addMenu(nullptr),
              myMesh(nullptr), grid(nullptr),
              isRunning(true), leftDown(false), midDown(false), ctrlHeld(false), 
              isAnimatingCamera(false), draggingPoints(false),
@@ -108,6 +108,7 @@ bool App::init() {
     toolbar = new Toolbar();
     gizmo = new TransformGizmo();
     gizmo->init();
+    addMenu = new AddMenu();
 
     glEnable(GL_DEPTH_TEST);
     glEnable(GL_PROGRAM_POINT_SIZE);
@@ -522,9 +523,9 @@ void App::processEvents() {
             const Uint8* kState = SDL_GetKeyboardState(NULL);
             bool ctrl = kState[SDL_SCANCODE_LCTRL] || kState[SDL_SCANCODE_RCTRL];
             
+            if(e.key.keysym.sym == SDLK_TAB) addMenu->isOpen = !addMenu->isOpen; // Toggle Add Menu
             if(e.key.keysym.sym == SDLK_p) pointMode = !pointMode;
-            if(e.key.keysym.sym == SDLK_g && !ctrl) showGrid = !showGrid;
-            
+            if(e.key.keysym.sym == SDLK_g && !ctrl) showGrid = !showGrid; 
             if(e.key.keysym.sym == SDLK_1) toolbar->selectMode = SelectMode::POINT;
             if(e.key.keysym.sym == SDLK_2) toolbar->selectMode = SelectMode::LINE;
             if(e.key.keysym.sym == SDLK_3) toolbar->selectMode = SelectMode::FACE; 
@@ -720,6 +721,28 @@ void App::buildUI() {
         ImGui::GetForegroundDrawList()->AddRectFilled(ImVec2(selStart.x, selStart.y), ImVec2(selEnd.x, selEnd.y), IM_COL32(255, 255, 0, 40));
     }
     
+    // Process Add Menu actions
+    if (addMenu->draw(modelPoints, myMesh->indices)) {
+        // A new shape was added! Rebuild the GPU buffers.
+        std::vector<Vertex> verts;
+        for(auto& p : modelPoints) verts.push_back({p.position, p.color});
+        std::vector<unsigned int> newInds = myMesh->indices;
+        delete myMesh;
+        myMesh = new Mesh(verts, GL_TRIANGLES, newInds);
+        
+        // Regenerate lines and faces from the new indices
+        extractTopologyFromMesh();
+        
+        // Deselect everything else so the user can easily select their new shape
+        for(auto& p : modelPoints) p.deselect();
+        for(auto& l : modelLines) l.deselect();
+        for(auto& f : modelFaces) f.deselect();
+        selectedIndices.clear();
+        
+        gizmo->updateState(modelPoints, modelLines, modelFaces);
+        saveState(); // Allow undoing the object creation
+    }
+    
     int winH; SDL_GetWindowSize(window, nullptr, &winH);
     toolbar->draw(winH);
 }
@@ -869,6 +892,7 @@ void App::cleanup() {
     
     delete toolbar;
     delete gizmo;
+    delete addMenu;
     
     if(glContext) { SDL_GL_DeleteContext(glContext); glContext = nullptr; }
     if(window) { SDL_DestroyWindow(window); window = nullptr; }

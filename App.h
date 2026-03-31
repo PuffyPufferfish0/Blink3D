@@ -14,6 +14,7 @@
 #include "ViewCube.h"
 #include "Toolbar.h"
 #include "TransformGizmo.h"
+#include "AddMenu.h"
 
 struct AppConfig {
     char exportDirectory[256] = "./export";
@@ -46,6 +47,7 @@ private:
     ViewCube* viewCube;
     Toolbar* toolbar;
     TransformGizmo* gizmo;
+    AddMenu* addMenu;
     Mesh* myMesh;
     Mesh* grid;
     std::vector<Point> modelPoints;
