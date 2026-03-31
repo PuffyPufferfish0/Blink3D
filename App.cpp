@@ -9,13 +9,13 @@
 #include "imgui/imgui_impl_opengl3.h"
 
 App::App() : window(nullptr), glContext(nullptr), shaderProg(0), 
-             camera(nullptr), viewCube(nullptr), toolbar(nullptr), gizmo(nullptr), addMenu(nullptr),
-             myMesh(nullptr), grid(nullptr),
-             isRunning(true), leftDown(false), midDown(false), ctrlHeld(false), 
-             isAnimatingCamera(false), draggingPoints(false),
-             showGrid(true), pointMode(true), showPreferencesWindow(false), selStart(0), selEnd(0),
-             targetYaw(-90.0f), targetPitch(0.0f),
-             historyIndex(-1), hasUnsavedChanges(false) {}
+            camera(nullptr), viewCube(nullptr), toolbar(nullptr), gizmo(nullptr), addMenu(nullptr),
+            myMesh(nullptr), grid(nullptr),
+            isRunning(true), leftDown(false), midDown(false), ctrlHeld(false), 
+            isAnimatingCamera(false), draggingPoints(false),
+            showGrid(true), pointMode(true), showPreferencesWindow(false), selStart(0), selEnd(0),
+            targetYaw(-90.0f), targetPitch(0.0f),
+            historyIndex(-1), hasUnsavedChanges(false) {}
 
 App::~App() { cleanup(); }
 
