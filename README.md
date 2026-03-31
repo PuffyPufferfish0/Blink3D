@@ -21,6 +21,11 @@ make sure you have nix installed
 ```
 sh <(curl --proto '=https' --tlsv1.2 -L https://nixos.org/nix/install) --daemon
 ```
+you will then need to enable nix flakes
+```
+mkdir -p ~/.config/nix
+echo "experimental-features = nix-command flakes" >> ~/.config/nix/nix.conf
+```
 ```
 nix develop
 ```
@@ -39,4 +44,5 @@ _run make command given from dev output_
 |**slide parametric**| **z + [arrow key]**|
 |**toggle point visability**|**p** |
 |**snap point**|**select point, s**|
+|**swtich target mode**|**1,2,3**|
 
