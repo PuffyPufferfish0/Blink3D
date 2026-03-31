@@ -15,7 +15,7 @@ App::App() : window(nullptr), glContext(nullptr), shaderProg(0),
              myMesh(nullptr), grid(nullptr),
              isRunning(true), leftDown(false), midDown(false), ctrlHeld(false), 
              isAnimatingCamera(false), draggingPoints(false),
-             showGrid(true), pointMode(true), selStart(0), selEnd(0),
+             showGrid(true), pointMode(true), showPreferencesWindow(false), selStart(0), selEnd(0),
              targetYaw(-90.0f), targetPitch(0.0f),
              historyIndex(-1), hasUnsavedChanges(false) {}
 
@@ -469,6 +469,7 @@ void App::processEvents() {
             bool ctrl = kState[SDL_SCANCODE_LCTRL] || kState[SDL_SCANCODE_RCTRL];
             
             if(e.key.keysym.sym == SDLK_p) pointMode = !pointMode;
+            if(e.key.keysym.sym == SDLK_g && !ctrl) showGrid = !showGrid; // Grid Toggle
             
             if(e.key.keysym.sym == SDLK_1) toolbar->selectMode = SelectMode::POINT;
             if(e.key.keysym.sym == SDLK_2) toolbar->selectMode = SelectMode::LINE;
@@ -610,12 +611,30 @@ void App::buildUI() {
             if (ImGui::MenuItem("Exit")) isRunning = false;
             ImGui::EndMenu();
         }
+        if (ImGui::BeginMenu("Edit")) {
+            if (ImGui::MenuItem("Preferences")) showPreferencesWindow = true; // Added Prefs Tab
+            ImGui::EndMenu();
+        }
         if (ImGui::BeginMenu("Window")) {
-            ImGui::MenuItem("Show Grid", NULL, &showGrid);
+            ImGui::MenuItem("Show Grid (G)", NULL, &showGrid); // Updated label
             ImGui::MenuItem("Point Mode (P)", NULL, &pointMode);
             ImGui::EndMenu();
         }
         ImGui::EndMainMenuBar();
+    }
+
+    // Render the Preferences Window if toggled on
+    if (showPreferencesWindow) {
+        // We pass &showPreferencesWindow so ImGui automatically creates a close (X) button
+        ImGui::Begin("Preferences", &showPreferencesWindow); 
+        ImGui::Text("Application Preferences");
+        ImGui::Separator();
+        ImGui::Dummy(ImVec2(0, 10));
+        
+        ImGui::Text("More settings coming soon...");
+        // You can add camera speeds, grid colors, or snapping tolerances here later!
+        
+        ImGui::End();
     }
 
     if (leftDown && glm::distance(selStart, selEnd) > 5.0f) {

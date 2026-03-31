@@ -38,7 +38,7 @@ private:
     
     bool isRunning;
     bool leftDown, midDown, ctrlHeld, isAnimatingCamera, draggingPoints;
-    bool showGrid, pointMode;
+    bool showGrid, pointMode, showPreferencesWindow; // Added showPreferencesWindow
     glm::vec2 selStart, selEnd;
     float targetYaw, targetPitch;
 
