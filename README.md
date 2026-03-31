@@ -43,6 +43,7 @@ _run make command given from dev output_
 |**snap to parametric**| **z**|
 |**slide parametric**| **z + [arrow key]**|
 |**toggle point visability**|**p** |
-|**snap point**|**select point, s**|
+|**toggle grid visability**|**g**|
+|**snap points  **|**select point, s**|
 |**swtich target mode**|**1,2,3**|
 
