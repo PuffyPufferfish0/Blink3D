@@ -14,4 +14,4 @@
 - GUI work
 - face and lines
 - snap-to
-<img width="1282" height="755" alt="image" src="https://github.com/user-attachments/assets/8f5ab3af-d3bd-4464-a202-979ba28d2ad6" />
+![gif1] (pictures/parametric_split_move(2).gif)
