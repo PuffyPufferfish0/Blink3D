@@ -16,6 +16,6 @@
 - snap-to
 ![gif1](pictures/parametric_split_move(2).gif)
 
--added preferences menu
+- added preferences menu
 <img width="1714" height="929" alt="image" src="https://github.com/user-attachments/assets/134b0ae4-371f-4f13-a76d-5e72b631b40b" />
 
