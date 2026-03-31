@@ -7,9 +7,6 @@
 #include "imgui/imgui_impl_sdl2.h"
 #include "imgui/imgui_impl_opengl3.h"
 
-const int WINDOW_WIDTH = 1280;
-const int WINDOW_HEIGHT = 720;
-
 App::App() : window(nullptr), glContext(nullptr), shaderProg(0), 
              camera(nullptr), viewCube(nullptr), toolbar(nullptr), gizmo(nullptr),
              myMesh(nullptr), grid(nullptr),
@@ -21,15 +18,73 @@ App::App() : window(nullptr), glContext(nullptr), shaderProg(0),
 
 App::~App() { cleanup(); }
 
+void App::loadConfig() {
+    std::ifstream file(".configSettings");
+    if (file.is_open()) {
+        std::string key;
+        while (file >> key) {
+            if (key == "exportDir") file >> config.exportDirectory;
+            else if (key == "bgColor") file >> config.bgColor.r >> config.bgColor.g >> config.bgColor.b;
+            else if (key == "unselPoint") file >> config.unselectedPointColor.r >> config.unselectedPointColor.g >> config.unselectedPointColor.b;
+            else if (key == "selPoint") file >> config.selectedPointColor.r >> config.selectedPointColor.g >> config.selectedPointColor.b;
+            else if (key == "unselLine") file >> config.unselectedLineColor.r >> config.unselectedLineColor.g >> config.unselectedLineColor.b;
+            else if (key == "selLine") file >> config.selectedLineColor.r >> config.selectedLineColor.g >> config.selectedLineColor.b;
+            else if (key == "unselFace") file >> config.unselectedFaceColor.r >> config.unselectedFaceColor.g >> config.unselectedFaceColor.b;
+            else if (key == "selFace") file >> config.selectedFaceColor.r >> config.selectedFaceColor.g >> config.selectedFaceColor.b;
+            else if (key == "pointSize") file >> config.pointSize;
+            else if (key == "lineThick") file >> config.lineThickness;
+            else if (key == "winRes") file >> config.windowResIndex;
+        }
+        file.close();
+    }
+}
+
+void App::saveConfig() {
+    std::ofstream file(".configSettings");
+    if (file.is_open()) {
+        file << "exportDir " << config.exportDirectory << "\n";
+        file << "bgColor " << config.bgColor.r << " " << config.bgColor.g << " " << config.bgColor.b << "\n";
+        file << "unselPoint " << config.unselectedPointColor.r << " " << config.unselectedPointColor.g << " " << config.unselectedPointColor.b << "\n";
+        file << "selPoint " << config.selectedPointColor.r << " " << config.selectedPointColor.g << " " << config.selectedPointColor.b << "\n";
+        file << "unselLine " << config.unselectedLineColor.r << " " << config.unselectedLineColor.g << " " << config.unselectedLineColor.b << "\n";
+        file << "selLine " << config.selectedLineColor.r << " " << config.selectedLineColor.g << " " << config.selectedLineColor.b << "\n";
+        file << "unselFace " << config.unselectedFaceColor.r << " " << config.unselectedFaceColor.g << " " << config.unselectedFaceColor.b << "\n";
+        file << "selFace " << config.selectedFaceColor.r << " " << config.selectedFaceColor.g << " " << config.selectedFaceColor.b << "\n";
+        file << "pointSize " << config.pointSize << "\n";
+        file << "lineThick " << config.lineThickness << "\n";
+        file << "winRes " << config.windowResIndex << "\n";
+        file.close();
+    }
+}
+
+void App::applyWindowResolution() {
+    if (!window) return;
+    int w = 1280, h = 720;
+    if(config.windowResIndex == 0) { w=800; h=600; }
+    else if(config.windowResIndex == 1) { w=1280; h=720; }
+    else if(config.windowResIndex == 2) { w=1920; h=1080; }
+    else if(config.windowResIndex == 3) { w=2560; h=1440; }
+    SDL_SetWindowSize(window, w, h);
+    SDL_SetWindowPosition(window, SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED);
+}
+
 bool App::init() {
     if (SDL_Init(SDL_INIT_VIDEO) < 0) return false;
+
+    loadConfig();
 
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3);
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 3);
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
     SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
 
-    window = SDL_CreateWindow("Blink3D Engine", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, WINDOW_WIDTH, WINDOW_HEIGHT, SDL_WINDOW_OPENGL | SDL_WINDOW_SHOWN | SDL_WINDOW_RESIZABLE);
+    int startW = 1280, startH = 720;
+    if(config.windowResIndex == 0) { startW=800; startH=600; }
+    else if(config.windowResIndex == 1) { startW=1280; startH=720; }
+    else if(config.windowResIndex == 2) { startW=1920; startH=1080; }
+    else if(config.windowResIndex == 3) { startW=2560; startH=1440; }
+
+    window = SDL_CreateWindow("Blink3D Engine", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, startW, startH, SDL_WINDOW_OPENGL | SDL_WINDOW_SHOWN | SDL_WINDOW_RESIZABLE);
     if (!window) return false;
 
     glContext = SDL_GL_CreateContext(window);
@@ -66,10 +121,11 @@ void App::initShaders() {
         "layout (location = 1) in vec3 aColor;\n"
         "out vec3 ourColor;\n"
         "uniform mat4 model, view, projection;\n"
+        "uniform float pointSize;\n"
         "void main() {\n"
         "   gl_Position = projection * view * model * vec4(aPos, 1.0);\n"
         "   ourColor = aColor;\n"
-        "   gl_PointSize = 20.0;\n" 
+        "   gl_PointSize = pointSize;\n" 
         "}";
 
     const char* fSrc = "#version 330 core\n"
@@ -79,9 +135,7 @@ void App::initShaders() {
         "uniform vec3 colorVec;\n"
         "void main() {\n"
         "   if(isPoint) {\n"
-        "       vec3 c = ourColor;\n"
-        "       if (length(c) < 0.1) c = vec3(0.0, 1.0, 1.0);\n"
-        "       FragColor = vec4(c, 1.0);\n"
+        "       FragColor = vec4(ourColor, 1.0);\n"
         "       return;\n"
         "   }\n"
         "   if(overrideColor) FragColor = vec4(colorVec, 1.0);\n"
@@ -245,7 +299,7 @@ void App::processEvents() {
                     glm::mat4 v = camera->GetViewMatrix(), p_mat = glm::perspective(glm::radians(45.0f), (float)w/h, 0.1f, 100.0f);
                     
                     if (toolbar->selectMode == SelectMode::FACE) {
-                        int best = -1; float z_min = 1.0f; // Track depth to select front-most face
+                        int best = -1; float z_min = 1.0f;
                         for(int i=0; i<(int)modelFaces.size(); i++){
                             glm::vec4 c1 = p_mat * v * glm::vec4(modelPoints[modelFaces[i].v1].position, 1.0f);
                             glm::vec4 c2 = p_mat * v * glm::vec4(modelPoints[modelFaces[i].v2].position, 1.0f);
@@ -469,11 +523,11 @@ void App::processEvents() {
             bool ctrl = kState[SDL_SCANCODE_LCTRL] || kState[SDL_SCANCODE_RCTRL];
             
             if(e.key.keysym.sym == SDLK_p) pointMode = !pointMode;
-            if(e.key.keysym.sym == SDLK_g && !ctrl) showGrid = !showGrid; // Grid Toggle
+            if(e.key.keysym.sym == SDLK_g && !ctrl) showGrid = !showGrid;
             
             if(e.key.keysym.sym == SDLK_1) toolbar->selectMode = SelectMode::POINT;
             if(e.key.keysym.sym == SDLK_2) toolbar->selectMode = SelectMode::LINE;
-            if(e.key.keysym.sym == SDLK_3) toolbar->selectMode = SelectMode::FACE; // Face Mode Key
+            if(e.key.keysym.sym == SDLK_3) toolbar->selectMode = SelectMode::FACE; 
             
             if(e.key.keysym.sym == SDLK_t) toolbar->currentTool = ToolMode::MOVE;
             if(e.key.keysym.sym == SDLK_r) toolbar->currentTool = ToolMode::ROTATE;
@@ -598,7 +652,8 @@ void App::update() {
 
     for(int i=0; i<(int)modelPoints.size(); i++) {
         myMesh->vertices[i].Position = modelPoints[i].position;
-        myMesh->vertices[i].Color = modelPoints[i].color;
+        // Inject configuration colors here! Overrides default point colors.
+        myMesh->vertices[i].Color = modelPoints[i].selected ? config.selectedPointColor : config.unselectedPointColor;
     }
     myMesh->updateGPUData();
     
@@ -612,28 +667,51 @@ void App::buildUI() {
             ImGui::EndMenu();
         }
         if (ImGui::BeginMenu("Edit")) {
-            if (ImGui::MenuItem("Preferences")) showPreferencesWindow = true; // Added Prefs Tab
+            if (ImGui::MenuItem("Preferences")) showPreferencesWindow = true; 
             ImGui::EndMenu();
         }
         if (ImGui::BeginMenu("Window")) {
-            ImGui::MenuItem("Show Grid (G)", NULL, &showGrid); // Updated label
+            ImGui::MenuItem("Show Grid (G)", NULL, &showGrid); 
             ImGui::MenuItem("Point Mode (P)", NULL, &pointMode);
             ImGui::EndMenu();
         }
         ImGui::EndMainMenuBar();
     }
 
-    // Render the Preferences Window if toggled on
     if (showPreferencesWindow) {
-        // We pass &showPreferencesWindow so ImGui automatically creates a close (X) button
-        ImGui::Begin("Preferences", &showPreferencesWindow); 
-        ImGui::Text("Application Preferences");
-        ImGui::Separator();
+        ImGui::Begin("Preferences", &showPreferencesWindow);
+        ImGui::InputText("Main Export Directory", config.exportDirectory, IM_ARRAYSIZE(config.exportDirectory));
+        
+        if (ImGui::CollapsingHeader("Theme", ImGuiTreeNodeFlags_DefaultOpen)) {
+            ImGui::ColorEdit3("Background Color", glm::value_ptr(config.bgColor));
+            ImGui::ColorEdit3("Unselected Point Color", glm::value_ptr(config.unselectedPointColor));
+            ImGui::ColorEdit3("Selected Point Color", glm::value_ptr(config.selectedPointColor));
+            ImGui::ColorEdit3("Unselected Line Color", glm::value_ptr(config.unselectedLineColor));
+            ImGui::ColorEdit3("Selected Line Color", glm::value_ptr(config.selectedLineColor));
+            ImGui::ColorEdit3("Unselected Face Color", glm::value_ptr(config.unselectedFaceColor));
+            ImGui::ColorEdit3("Selected Face Color", glm::value_ptr(config.selectedFaceColor));
+        }
+
+        ImGui::SliderFloat("Point Size", &config.pointSize, 5.0f, 50.0f, "%.1f px");
+        ImGui::SliderFloat("Line Thickness", &config.lineThickness, 1.0f, 10.0f, "%.1f px");
+
+        const char* resOptions[] = { "800x600", "1280x720", "1920x1080", "2560x1440" };
+        if (ImGui::Combo("Default Window Resolution", &config.windowResIndex, resOptions, IM_ARRAYSIZE(resOptions))) {
+            applyWindowResolution();
+            saveConfig(); // Save instantly when changed
+        }
+
         ImGui::Dummy(ImVec2(0, 10));
         
-        ImGui::Text("More settings coming soon...");
-        // You can add camera speeds, grid colors, or snapping tolerances here later!
-        
+        if (ImGui::Button("Save to config file", ImVec2(160, 30))) {
+            saveConfig();
+        }
+        ImGui::SameLine();
+        if (ImGui::Button(".configSettings file export", ImVec2(220, 30))) {
+            // Future file-browser trigger goes here. For now, it forces a save to disk!
+            saveConfig();
+        }
+
         ImGui::End();
     }
 
@@ -653,7 +731,8 @@ void App::render() {
     if (winH == 0) winH = 1;
 
     glViewport(0, 0, drawW, drawH);
-    glClearColor(0.12f, 0.12f, 0.15f, 1.0f);
+    // Dynamic config background color
+    glClearColor(config.bgColor.r, config.bgColor.g, config.bgColor.b, 1.0f);
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
     glm::mat4 v = camera->GetViewMatrix(), p = glm::perspective(glm::radians(45.0f), (float)winW/winH, 0.1f, 100.0f);
@@ -662,6 +741,7 @@ void App::render() {
     glUniformMatrix4fv(glGetUniformLocation(shaderProg, "view"), 1, GL_FALSE, glm::value_ptr(v));
     glUniformMatrix4fv(glGetUniformLocation(shaderProg, "projection"), 1, GL_FALSE, glm::value_ptr(p));
     glUniformMatrix4fv(glGetUniformLocation(shaderProg, "model"), 1, GL_FALSE, glm::value_ptr(glm::mat4(1.0f)));
+    glUniform1f(glGetUniformLocation(shaderProg, "pointSize"), config.pointSize);
 
     if(showGrid) {
         glUniform1i(glGetUniformLocation(shaderProg, "isPoint"), false);
@@ -669,27 +749,30 @@ void App::render() {
         grid->Draw();
     }
 
+    // Dynamic config unselected face color
     glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
     glUniform1i(glGetUniformLocation(shaderProg, "isPoint"), false);
     glUniform1i(glGetUniformLocation(shaderProg, "overrideColor"), true);
-    glUniform3f(glGetUniformLocation(shaderProg, "colorVec"), 0.45f, 0.45f, 0.45f);
+    glUniform3f(glGetUniformLocation(shaderProg, "colorVec"), config.unselectedFaceColor.r, config.unselectedFaceColor.g, config.unselectedFaceColor.b);
     myMesh->drawMode = GL_TRIANGLES;
     myMesh->Draw();
 
+    // Dynamic config unselected line color
     glEnable(GL_POLYGON_OFFSET_LINE);
     glPolygonOffset(-1.0f, -1.0f);
+    glLineWidth(config.lineThickness);
     glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
-    glUniform3f(glGetUniformLocation(shaderProg, "colorVec"), 0.1f, 0.1f, 0.1f);
+    glUniform3f(glGetUniformLocation(shaderProg, "colorVec"), config.unselectedLineColor.r, config.unselectedLineColor.g, config.unselectedLineColor.b);
     myMesh->Draw();
     glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
     glDisable(GL_POLYGON_OFFSET_LINE);
     
-    // Draw highlighted lines
+    // Dynamic config selected line color
     std::vector<Vertex> selLineVerts;
     for (const auto& l : modelLines) {
         if (l.selected) {
-            selLineVerts.push_back({modelPoints[l.v1].position, glm::vec3(1.0f, 1.0f, 0.0f)});
-            selLineVerts.push_back({modelPoints[l.v2].position, glm::vec3(1.0f, 1.0f, 0.0f)});
+            selLineVerts.push_back({modelPoints[l.v1].position, config.selectedLineColor});
+            selLineVerts.push_back({modelPoints[l.v2].position, config.selectedLineColor});
         }
     }
     if (!selLineVerts.empty()) {
@@ -715,13 +798,13 @@ void App::render() {
         glDeleteVertexArrays(1, &vao);
     }
     
-    // Draw Highlighted Faces
+    // Dynamic config selected face color
     std::vector<Vertex> selFaceVerts;
     for (const auto& f : modelFaces) {
         if (f.selected) {
-            selFaceVerts.push_back({modelPoints[f.v1].position, glm::vec3(0.9f, 0.9f, 0.2f)});
-            selFaceVerts.push_back({modelPoints[f.v2].position, glm::vec3(0.9f, 0.9f, 0.2f)});
-            selFaceVerts.push_back({modelPoints[f.v3].position, glm::vec3(0.9f, 0.9f, 0.2f)});
+            selFaceVerts.push_back({modelPoints[f.v1].position, config.selectedFaceColor});
+            selFaceVerts.push_back({modelPoints[f.v2].position, config.selectedFaceColor});
+            selFaceVerts.push_back({modelPoints[f.v3].position, config.selectedFaceColor});
         }
     }
     if (!selFaceVerts.empty()) {
@@ -737,7 +820,7 @@ void App::render() {
         glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)offsetof(Vertex, Color));
         
         glEnable(GL_POLYGON_OFFSET_FILL);
-        glPolygonOffset(-2.0f, -2.0f); // Offset to prevent z-fighting with gray mesh
+        glPolygonOffset(-2.0f, -2.0f); 
         
         glUseProgram(shaderProg);
         glUniform1i(glGetUniformLocation(shaderProg, "isPoint"), false);

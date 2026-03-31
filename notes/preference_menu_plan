@@ -1,0 +1,26 @@
+
+
+- main export directory [textbox where you can paste directory]  ### when I get around to adding the open/export functions, I want to have a default folder in the Blink3D directory
+- theme
+###all of the indented means they are under the above button
+
+	- background color      [small box with color of default (color will change when you change it]  [text box where you can put rgb color combination]
+	- unselected point color[small box with color of default (color will change when you change it]  [text box where you can put rgb color combination]
+	- selected point color  [small box with color of default (color will change when you change it]  [text box where you can put rgb color combination]
+	- unselected line color [small box with color of default (color will change when you change it]  [text box where you can put rgb color combination]
+	- selected line color   [small box with color of default (color will change when you change it]  [text box where you can put rgb color combination]
+	- unselected face color [small box with color of default (color will change when you change it]  [text box where you can put rgb color combination]
+	- selected face color   [small box with color of default (color will change when you change it]  [text box where you can put rgb color combination]
+- point size [X pixels]  ### maybe put a slider here?
+- line thickness [X pixels] ### maybe put a slider here?
+- default windows resolution [options dropdown]
+
+
+### I want to have these buttons side by side
+### I want a master file that can save all settings and plugins, (a lot like the way nix has one master flake.nix) this will allow you save and export all of your settings
+- save to config file
+	- .configSettings file export   ### popup custom files manager, if there is a .configSettings file in the Blink3D directory, it should always default to using that one 
+
+	
+	
+	
