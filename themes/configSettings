@@ -1,0 +1,11 @@
+exportDir ./export
+bgColor 1 1 1
+unselPoint 0 0 0
+selPoint 1 1 0
+unselLine 0 0 0
+selLine 1 1 0
+unselFace 0.504902 0.504902 0.504902
+selFace 0.375288 0.515632 0.671569
+pointSize 12.3
+lineThick 2.1
+winRes 2
