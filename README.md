@@ -52,6 +52,7 @@ _run make command given from dev output_
 ### .configSettings file
 - you must have the .configSetting IN the Blink3D directory for it to read
 - make sure to export it from preferences menu
+- 
 
 
 
