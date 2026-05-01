@@ -4,7 +4,7 @@
 #include <algorithm>
 
 TransformGizmo::TransformGizmo() : activeAxis(NONE), isDragging(false), isVisible(false), 
-                                   gizmoMeshX(nullptr), gizmoMeshY(nullptr), gizmoMeshZ(nullptr) {}
+                                    gizmoMeshX(nullptr), gizmoMeshY(nullptr), gizmoMeshZ(nullptr) {}
 
 TransformGizmo::~TransformGizmo() {
     if (gizmoMeshX) delete gizmoMeshX;

@@ -2,7 +2,7 @@
 #include "imgui/imgui.h"
 
 enum class ToolMode { MOVE, ROTATE, SCALE };
-enum class SelectMode { POINT, LINE, FACE }; // Added Face Mode
+enum class SelectMode { POINT, LINE, FACE }; 
 
 class Toolbar {
 public:

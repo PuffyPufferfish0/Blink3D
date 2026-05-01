@@ -76,7 +76,7 @@ bool App::init() {
 
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3);
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 3);
-    SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
+    SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROF    ILE_CORE);
     SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
 
     int startW = 1280, startH = 720;
@@ -366,7 +366,7 @@ void App::processEvents() {
                             }
                             if (changed) saveState(); 
                         }
-                    } else { // Standard Point Selection
+                    } else {
                         int best = -1; float d_min = 40.0f; 
                         for(int i=0; i<(int)modelPoints.size(); i++){
                             glm::vec4 clip = p_mat * v * glm::vec4(modelPoints[i].position, 1.0f);
@@ -536,9 +536,8 @@ void App::processEvents() {
             if(e.key.keysym.sym == SDLK_r) toolbar->currentTool = ToolMode::ROTATE;
             if(e.key.keysym.sym == SDLK_e) toolbar->currentTool = ToolMode::SCALE;
             
-            // --- Copy / Paste Keybinds ---
+                //copy and paste
             if (ctrl && e.key.keysym.sym == SDLK_c && e.key.repeat == 0) {
-                // Map physical points that are currently active in any selection mode
                 std::vector<bool> copyFlag(modelPoints.size(), false);
                 for (size_t i = 0; i < modelPoints.size(); i++) if (modelPoints[i].selected) copyFlag[i] = true;
                 for (const auto& l : modelLines) if (l.selected) { copyFlag[l.v1] = true; copyFlag[l.v2] = true; }
@@ -548,7 +547,6 @@ void App::processEvents() {
                 clipboard.points.clear();
                 clipboard.indices.clear();
                 
-                // Copy selected Points into clipboard
                 for (size_t i = 0; i < modelPoints.size(); i++) {
                     if (copyFlag[i]) {
                         oldToNew[i] = clipboard.points.size();
@@ -556,7 +554,6 @@ void App::processEvents() {
                     }
                 }
                 
-                // Copy existing full Triangles (Faces) if all their vertices were copied
                 for (size_t i = 0; i < myMesh->indices.size(); i += 3) {
                     int v1 = myMesh->indices[i];
                     int v2 = myMesh->indices[i+1];
@@ -570,7 +567,6 @@ void App::processEvents() {
             } 
             else if (ctrl && e.key.keysym.sym == SDLK_v && e.key.repeat == 0) {
                 if (!clipboard.points.empty()) {
-                    // Deselect everything in the scene to prepare for the new pasted object
                     for(auto& p : modelPoints) p.deselect();
                     for(auto& l : modelLines) l.deselect();
                     for(auto& f : modelFaces) f.deselect();
@@ -578,19 +574,18 @@ void App::processEvents() {
 
                     int startIdx = modelPoints.size();
                     
-                    // Offset the pasted object based on camera view so it is slightly visible and doesn't clip
                     glm::vec3 offset = camera->Right * 0.4f - camera->Up * 0.4f; 
                     
                     for (size_t i = 0; i < clipboard.points.size(); i++) {
                         Point newPt(clipboard.points[i] + offset);
-                        newPt.select(); // Auto-select newly pasted geometry
+                        newPt.select(); 
                         modelPoints.push_back(newPt);
                         selectedIndices.push_back(startIdx + i);
                     }
                     
                     std::vector<unsigned int> newMeshIndices = myMesh->indices;
                     for (size_t i = 0; i < clipboard.indices.size(); i++) {
-                        newMeshIndices.push_back(clipboard.indices[i] + startIdx); // Wire up the copied faces
+                        newMeshIndices.push_back(clipboard.indices[i] + startIdx); 
                     }
                     
                     std::vector<Vertex> verts;
@@ -600,7 +595,6 @@ void App::processEvents() {
                     
                     extractTopologyFromMesh();
                     
-                    // Force the UI into Point mode so they instantly get control of the Gizmo on the new object
                     toolbar->selectMode = SelectMode::POINT;
                     
                     gizmo->updateState(modelPoints, modelLines, modelFaces);

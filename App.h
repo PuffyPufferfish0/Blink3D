@@ -30,7 +30,6 @@ struct AppConfig {
     int windowResIndex = 1; // Default to 1280x720
 };
 
-// Stores copied geometry and topology
 struct ClipboardData {
     std::vector<glm::vec3> points;
     std::vector<unsigned int> indices;

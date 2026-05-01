@@ -18,5 +18,5 @@ public:
 private:
     Mesh* cubeMesh;
     bool isDragging;
-    int size; // Size of the cube overlay in pixels
+    int size; //pixels
 };

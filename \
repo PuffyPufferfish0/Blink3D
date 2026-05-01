@@ -16,20 +16,18 @@
       devShells = forAllSystems (system: {
         default = pkgs.${system}.mkShell {
           
-          # These are the dependencies your project needs to compile and run
           buildInputs = with pkgs.${system}; [
-            gcc           # C++ Compiler
-            gnumake       # (Optional) if you want to make a Makefile later
-            SDL2          # Windowing and Input
-            glm           # OpenGL Mathematics
-            libGL         # OpenGL bindings
-            pkg-config    # Tool to locate libraries
-            libx11        # <-- FIXED: Replaced deprecated xorg.libX11
+            gcc
+            gnumake
+            SDL2
+            glm
+            libGL
+            pkg-config
+            libx11
           ];
 
-          # A nice hook to run when you enter the environment
           shellHook = ''
-            echo "Blink3D Loaded!"
+            echo "Blink3D Loaded"
             echo "packages Provided by Nix: GCC, SDL2, GLM, libGL, X11"
           '';
         };

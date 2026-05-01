@@ -7,7 +7,7 @@ Camera::Camera(glm::vec3 target, float distance) {
     Yaw = -90.0f; 
     Pitch = 0.0f;
     
-    MouseSensitivity = 0.2f; // Slightly faster rotation
+    MouseSensitivity = 0.2f; 
     ZoomSpeed = 0.5f;
     PanSpeed = 0.01f;
     
@@ -24,7 +24,6 @@ void Camera::Reset() {
 void Camera::SetRotation(float yaw, float pitch) {
     Yaw = yaw;
     Pitch = pitch;
-    // Constrain pitch to avoid flipping
     if (Pitch > 89.0f)  Pitch = 89.0f;
     if (Pitch < -89.0f) Pitch = -89.0f;
     updateCameraVectors();
@@ -41,7 +40,6 @@ void Camera::ProcessMouseOrbit(float xoffset, float yoffset) {
     Yaw   += xoffset;
     Pitch += yoffset;
 
-    // Constrain pitch so we don't flip upside down
     if (Pitch > 89.0f)  Pitch = 89.0f;
     if (Pitch < -89.0f) Pitch = -89.0f;
 
@@ -49,31 +47,26 @@ void Camera::ProcessMouseOrbit(float xoffset, float yoffset) {
 }
 
 void Camera::ProcessMousePan(float xoffset, float yoffset) {
-    // Move the actual target point along our Right and Up vectors
     Target -= Right * (xoffset * PanSpeed);
     Target -= Up * (yoffset * PanSpeed); 
     updateCameraVectors();
 }
 
 void Camera::ProcessMouseScroll(float yoffset) {
-    // Zoom in and out
     Distance -= yoffset * ZoomSpeed;
-    if (Distance < 0.5f) Distance = 0.5f; // Prevent zooming through the model
+    if (Distance < 0.5f) Distance = 0.5f; 
     updateCameraVectors();
 }
 
 void Camera::updateCameraVectors() {
-    // Calculate the new Front vector
     glm::vec3 front;
     front.x = cos(glm::radians(Yaw)) * cos(glm::radians(Pitch));
     front.y = sin(glm::radians(Pitch));
     front.z = sin(glm::radians(Yaw)) * cos(glm::radians(Pitch));
     Front = glm::normalize(front);
     
-    // Re-calculate the Right and Up vector
     Right = glm::normalize(glm::cross(Front, WorldUp)); 
     Up    = glm::normalize(glm::cross(Right, Front));
 
-    // Lock the camera's position to the orbit sphere around the Target
     Position = Target - (Front * Distance);
 }

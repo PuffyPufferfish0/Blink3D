@@ -25,7 +25,7 @@ void Toolbar::draw(int winH) {
     ImGui::Dummy(ImVec2(0, 2));
     DrawSelectButton("Lns (2)", SelectMode::LINE);
     ImGui::Dummy(ImVec2(0, 2));
-    DrawSelectButton("Fcs (3)", SelectMode::FACE); // Added Face button
+    DrawSelectButton("Fcs (3)", SelectMode::FACE); 
     
     ImGui::Dummy(ImVec2(0, 10));
     ImGui::Separator();

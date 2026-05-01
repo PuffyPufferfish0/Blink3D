@@ -15,7 +15,6 @@ void Mesh::setupMesh() {
     glBindVertexArray(VAO);
 
     glBindBuffer(GL_ARRAY_BUFFER, VBO);
-    // Use GL_DYNAMIC_DRAW since modelers change vertex positions constantly
     glBufferData(GL_ARRAY_BUFFER, vertices.size() * sizeof(Vertex), &vertices[0], GL_DYNAMIC_DRAW);
 
     if (!indices.empty()) {
