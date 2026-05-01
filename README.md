@@ -1,5 +1,5 @@
 # Blink3D
-### make sure to checkout [timeline] (https://github.com/PuffyPufferfish0/Blink3D/blob/main/timeline.md)
+### make sure to checkout [timeline](https://github.com/PuffyPufferfish0/Blink3D/blob/main/timeline.md)
 A 3D modeling software designed for triangulation and textures. 
 
 
