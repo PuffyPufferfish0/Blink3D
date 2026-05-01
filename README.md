@@ -1,7 +1,9 @@
 # Blink3D
 A 3D modeling software designed for triangulation and textures. 
 
-for the make command, use common sense, it could change depending on added classes, or you may need to exclude some classes for debugging:
+
+
+for the make command, use common sense, it will change depending on added classes, or you may need to exclude some classes for debugging:
 
 ```
 g++ main.cpp App.cpp glad.c Point.cpp Camera.cpp Mesh.cpp ViewCube.cpp Toolbar.cpp TransformGizmo.cpp imgui/*.cpp -I./include -I./imgui -I. $(pkg-config --cflags sdl2) -o Blink3D -lSDL2 -ldl
@@ -52,7 +54,5 @@ _run make command given from dev output_
 ### .configSettings file
 - you must have the .configSetting IN the Blink3D directory for it to read
 - make sure to export it from preferences menu
-- 
-
 
 
